@@ -10,14 +10,18 @@ const mongoose = require("./config/database"); // Changed from db to mongoose
 require("./models/Store");
 require("./models/Channel");
 require("./models/Point"); // This ensures the Point model is registered
+require("./models/Plan"); // This ensures the Plan model is registered
+require("./models/Customer"); // This ensures the Customer model is registered
+require("./models/Transaction"); // This ensures the Transaction model is registered
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(corsMiddleware);
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Increase body parser limit to handle Base64 images in announcements (50MB limit)
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // Serve static files for uploaded logos
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
@@ -73,17 +77,44 @@ app.listen(PORT, () => {
   console.log("=".repeat(50));
 });
 
+// Initialize background jobs after database connection
+const initializeJobs = async () => {
+  try {
+    const queueManager = require("./queues/queueManager");
+    await queueManager.initialize();
+    console.log("✅ Background jobs initialized");
+  } catch (error) {
+    console.error("❌ Error initializing background jobs:", error);
+    // Don't exit - let the app continue without jobs
+  }
+};
+
+// Initialize jobs after database connection is ready
+mongoose.connection.once("open", async () => {
+  console.log("🔄 Database connected, initializing background jobs...");
+  await initializeJobs();
+});
+
 // Graceful shutdown
-process.on("SIGTERM", async () => {
-  console.log("⚠️  SIGTERM received, shutting down gracefully...");
+const gracefulShutdown = async () => {
+  try {
+    const queueManager = require("./queues/queueManager");
+    await queueManager.shutdown();
+  } catch (error) {
+    console.error("❌ Error shutting down queue manager:", error);
+  }
   await mongoose.connection.close();
   process.exit(0);
+};
+
+process.on("SIGTERM", async () => {
+  console.log("⚠️  SIGTERM received, shutting down gracefully...");
+  await gracefulShutdown();
 });
 
 process.on("SIGINT", async () => {
   console.log("\n⚠️  SIGINT received, shutting down gracefully...");
-  await mongoose.connection.close();
-  process.exit(0);
+  await gracefulShutdown();
 });
 
 // Handle uncaught errors

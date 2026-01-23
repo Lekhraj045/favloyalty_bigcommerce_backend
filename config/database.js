@@ -95,10 +95,25 @@ const connectDB = async () => {
     mongoose.connection.on("reconnected", () => {
       console.log("✅ MongoDB reconnected");
     });
+
+    // Seed default plans after connection is established
+    await seedDefaultPlans();
   } catch (error) {
     console.error("❌ MongoDB Database connection failed:", error.message);
     console.error("❌ Full error:", error);
     process.exit(1);
+  }
+};
+
+// Seed default plans
+const seedDefaultPlans = async () => {
+  try {
+    // Import Plan model here to avoid circular dependencies
+    const Plan = require("../models/Plan");
+    await Plan.seedDefaultPlans();
+  } catch (error) {
+    console.error("❌ Error seeding default plans:", error.message);
+    // Don't exit process if seeding fails, just log the error
   }
 };
 

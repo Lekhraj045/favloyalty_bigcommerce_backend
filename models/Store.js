@@ -6,7 +6,6 @@ const storeSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      index: true,
     },
     access_token: {
       type: String,
@@ -60,6 +59,19 @@ const storeSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    plan: {
+      type: String,
+      enum: ["free", "paid"],
+      default: "free",
+    },
+    trialDaysRemaining: {
+      type: Number,
+      default: null, // null = never tried paid plan, 14-1 = active trial, 0 = trial used/cancelled
+    },
+    paypalSubscriptionId: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -68,6 +80,7 @@ const storeSchema = new mongoose.Schema(
 
 storeSchema.index({ store_hash: 1 });
 storeSchema.index({ is_active: 1 });
+storeSchema.index({ plan: 1 });
 
 // Static methods
 storeSchema.statics.create = async function (storeData) {
@@ -104,6 +117,9 @@ storeSchema.statics.create = async function (storeData) {
         email: email || user?.email || null,
         is_active: true,
         installed_at: new Date(),
+        plan: "free",
+        trialDaysRemaining: null,
+        paypalSubscriptionId: null,
       });
 
       await newStore.save();

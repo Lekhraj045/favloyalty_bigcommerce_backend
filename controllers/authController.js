@@ -5,6 +5,8 @@ const {
   resolveStoreFromSignedPayload,
   buildLoginResponse,
   fetchChannelList,
+  buildSessionToken,
+  SESSION_TTL_SECONDS,
 } = require("../helpers/bigcommerce");
 
 const login = async (req, res, next) => {
@@ -93,11 +95,13 @@ const handleAuthCallback = async (req, res) => {
     }
 
     // Fetch channel list from BigCommerce and sync with database
+    // During installation, only fetch active channels
     console.log("🔄 Fetching channel list from BigCommerce API...");
     const channelList = await fetchChannelList(
       access_token,
       storeHash,
-      storeId
+      storeId,
+      true // filterActiveOnly = true for installation flow
     );
 
     console.log(
@@ -229,9 +233,57 @@ const handleLoad = async (req, res) => {
   }
 };
 
+// Refresh session token endpoint
+const refreshToken = async (req, res, next) => {
+  try {
+    const { storeHash } = req.body;
+
+    if (!storeHash) {
+      return res.status(400).json({
+        status: false,
+        message: "Missing store hash",
+      });
+    }
+
+    // Find store by hash
+    const store = await Store.findByHash(storeHash);
+
+    if (!store) {
+      return res.status(404).json({
+        status: false,
+        message: "Store not found",
+      });
+    }
+
+    // Verify store is active
+    if (!store.is_active) {
+      return res.status(403).json({
+        status: false,
+        message: "Store is not active",
+      });
+    }
+
+    // Generate new session token
+    const sessionToken = buildSessionToken(store);
+    const sessionExpiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
+
+    console.log("✅ Session token refreshed for store:", storeHash);
+
+    res.json({
+      status: true,
+      sessionToken,
+      sessionExpiresAt,
+    });
+  } catch (error) {
+    console.error("❌ Refresh Token Error:", error.message);
+    next(error);
+  }
+};
+
 module.exports = {
   login,
   handleAuthCallback,
   handleUninstall,
   handleLoad,
+  refreshToken,
 };

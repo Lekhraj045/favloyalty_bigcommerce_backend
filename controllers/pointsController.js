@@ -48,7 +48,8 @@ const savePoints = async (req, res, next) => {
 
     try {
       const { storeId, channelId, pointName, expiry, tierStatus } = req.body;
-      let { expiriesInDays, logo, customLogo, customPointName, tier } = req.body;
+      let { expiriesInDays, logo, customLogo, customPointName, tier } =
+        req.body;
 
       // Validate required fields
       if (!storeId || !channelId || !pointName) {
@@ -142,11 +143,20 @@ const savePoints = async (req, res, next) => {
         pointData.customLogo = customLogo;
       }
 
-      if (customPointName && Array.isArray(customPointName) && customPointName.length > 0) {
+      if (
+        customPointName &&
+        Array.isArray(customPointName) &&
+        customPointName.length > 0
+      ) {
         pointData.customPointName = customPointName;
       }
 
-      if (pointData.tierStatus && tier && Array.isArray(tier) && tier.length > 0) {
+      if (
+        pointData.tierStatus &&
+        tier &&
+        Array.isArray(tier) &&
+        tier.length > 0
+      ) {
         pointData.tier = tier;
       }
 
@@ -157,13 +167,95 @@ const savePoints = async (req, res, next) => {
       });
 
       let savedPoint;
+      let isTierUpdate = false;
       if (existingPoint) {
+        // Check if tier settings changed
+        isTierUpdate = 
+          pointData.tierStatus && 
+          tier && 
+          Array.isArray(tier) && 
+          tier.length > 0 &&
+          JSON.stringify(existingPoint.tier || []) !== JSON.stringify(tier);
+        
         // Update existing point
         Object.assign(existingPoint, pointData);
         savedPoint = await existingPoint.save();
       } else {
         // Create new point
         savedPoint = await Point.create(pointData);
+        isTierUpdate = pointData.tierStatus && tier && Array.isArray(tier) && tier.length > 0;
+      }
+
+      // If tier settings were saved/updated, recalculate customer tiers
+      if (isTierUpdate) {
+        try {
+          const Customer = require("../models/Customer");
+          
+          // Sort tiers by pointRequired in ascending order
+          const sortedTiers = [...savedPoint.tier].sort(
+            (a, b) => a.pointRequired - b.pointRequired
+          );
+
+          // Get all customers for this store and channel
+          const customers = await Customer.find({
+            store_id: storeObjectId,
+            channel_id: channel.channel_id,
+          });
+
+          console.log(
+            `🔄 Recalculating tiers for ${customers.length} customers after tier settings save`
+          );
+
+          let updatedCount = 0;
+
+          // Recalculate tier for each customer
+          for (const customer of customers) {
+            const customerPoints = customer.points || 0;
+
+            // Find the appropriate tier based on customer's points
+            let assignedTier = null;
+            let assignedTierIndex = 0;
+
+            for (let i = sortedTiers.length - 1; i >= 0; i--) {
+              if (customerPoints >= sortedTiers[i].pointRequired) {
+                assignedTier = sortedTiers[i];
+                assignedTierIndex = i;
+                break;
+              }
+            }
+
+            // If no tier found, assign first tier
+            if (!assignedTier && sortedTiers.length > 0) {
+              assignedTier = sortedTiers[0];
+              assignedTierIndex = 0;
+            }
+
+            if (assignedTier) {
+              // Determine max points for this tier
+              const nextTierIndex = assignedTierIndex + 1;
+              const maxPoints =
+                nextTierIndex < sortedTiers.length
+                  ? sortedTiers[nextTierIndex].pointRequired - 1
+                  : null;
+
+              customer.currentTier = {
+                tierIndex: assignedTierIndex,
+                multiplier: assignedTier.multiplier,
+                minPointsRequired: assignedTier.pointRequired,
+                maxPoints: maxPoints,
+              };
+              await customer.save();
+              updatedCount++;
+            }
+          }
+
+          console.log(
+            `✅ Tier recalculation complete: ${updatedCount} customers updated`
+          );
+        } catch (tierError) {
+          // Log error but don't fail the points save
+          console.error("⚠️ Error recalculating customer tiers:", tierError);
+        }
       }
 
       res.json({
@@ -194,7 +286,8 @@ const updatePoints = async (req, res, next) => {
     try {
       const { pointId } = req.params;
       const { pointName, expiry, tierStatus } = req.body;
-      let { expiriesInDays, logo, customLogo, customPointName, tier } = req.body;
+      let { expiriesInDays, logo, customLogo, customPointName, tier } =
+        req.body;
 
       if (!pointId) {
         return res.status(400).json({
@@ -290,6 +383,83 @@ const updatePoints = async (req, res, next) => {
 
       const updatedPoint = await point.save();
 
+      // If tier settings were updated, recalculate customer tiers
+      if (tier && Array.isArray(tier) && tier.length > 0 && point.tierStatus) {
+        try {
+          const Customer = require("../models/Customer");
+          const Channel = require("../models/Channel");
+          
+          // Get channel to find store_id
+          const channel = await Channel.findById(point.channel_id);
+          if (channel) {
+            // Sort tiers by pointRequired in ascending order
+            const sortedTiers = [...point.tier].sort(
+              (a, b) => a.pointRequired - b.pointRequired
+            );
+
+            // Get all customers for this store and channel
+            const customers = await Customer.find({
+              store_id: point.store_id,
+              channel_id: channel.channel_id,
+            });
+
+            console.log(
+              `🔄 Recalculating tiers for ${customers.length} customers after tier settings update`
+            );
+
+            let updatedCount = 0;
+
+            // Recalculate tier for each customer
+            for (const customer of customers) {
+              const customerPoints = customer.points || 0;
+
+              // Find the appropriate tier based on customer's points
+              let assignedTier = null;
+              let assignedTierIndex = 0;
+
+              for (let i = sortedTiers.length - 1; i >= 0; i--) {
+                if (customerPoints >= sortedTiers[i].pointRequired) {
+                  assignedTier = sortedTiers[i];
+                  assignedTierIndex = i;
+                  break;
+                }
+              }
+
+              // If no tier found, assign first tier
+              if (!assignedTier && sortedTiers.length > 0) {
+                assignedTier = sortedTiers[0];
+                assignedTierIndex = 0;
+              }
+
+              if (assignedTier) {
+                // Determine max points for this tier
+                const nextTierIndex = assignedTierIndex + 1;
+                const maxPoints =
+                  nextTierIndex < sortedTiers.length
+                    ? sortedTiers[nextTierIndex].pointRequired - 1
+                    : null;
+
+                customer.currentTier = {
+                  tierIndex: assignedTierIndex,
+                  multiplier: assignedTier.multiplier,
+                  minPointsRequired: assignedTier.pointRequired,
+                  maxPoints: maxPoints,
+                };
+                await customer.save();
+                updatedCount++;
+              }
+            }
+
+            console.log(
+              `✅ Tier recalculation complete: ${updatedCount} customers updated`
+            );
+          }
+        } catch (tierError) {
+          // Log error but don't fail the points update
+          console.error("⚠️ Error recalculating customer tiers:", tierError);
+        }
+      }
+
       res.json({
         success: true,
         message: "Points configuration updated successfully",
@@ -338,15 +508,16 @@ const getPoints = async (req, res, next) => {
       tierStatus: point.tierStatus || false,
       logo: point.logo || undefined,
       customLogo: point.customLogo || undefined,
-      customPointName: point.customPointName && point.customPointName.length > 0 
-        ? point.customPointName 
-        : undefined,
+      customPointName:
+        point.customPointName && point.customPointName.length > 0
+          ? point.customPointName
+          : undefined,
       tier: point.tier && point.tier.length > 0 ? point.tier : undefined,
     };
 
     // Remove undefined fields (but keep _id)
-    Object.keys(pointData).forEach(key => {
-      if (pointData[key] === undefined && key !== '_id') {
+    Object.keys(pointData).forEach((key) => {
+      if (pointData[key] === undefined && key !== "_id") {
         delete pointData[key];
       }
     });
@@ -363,4 +534,3 @@ module.exports = {
   updatePoints,
   getPoints,
 };
-

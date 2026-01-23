@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const axios = require("axios");
+const mongoose = require("mongoose");
 const Store = require("../models/Store");
 const Channel = require("../models/Channel");
 
@@ -56,8 +57,12 @@ const buildSessionToken = (store) =>
 
 /**
  * Fetch channel list from BigCommerce API and sync with database
+ * @param {string} accessToken - BigCommerce access token
+ * @param {string} storeHash - Store hash identifier
+ * @param {string|null} storeId - Store ID for database sync (optional)
+ * @param {boolean} filterActiveOnly - If true, only fetch active channels (default: false)
  */
-const fetchChannelList = async (accessToken, storeHash, storeId = null) => {
+const fetchChannelList = async (accessToken, storeHash, storeId = null, filterActiveOnly = false) => {
   try {
     console.log("🔄 Fetching channel list for store:", storeHash);
 
@@ -72,7 +77,19 @@ const fetchChannelList = async (accessToken, storeHash, storeId = null) => {
       }
     );
 
-    const channelsFromBigCommerce = response.data.data || [];
+    let channelsFromBigCommerce = response.data.data || [];
+    
+    // Filter for active channels only if requested (during installation)
+    if (filterActiveOnly) {
+      const allChannelsCount = channelsFromBigCommerce.length;
+      channelsFromBigCommerce = channelsFromBigCommerce.filter(
+        (channel) => channel.status === "active"
+      );
+      console.log(
+        `🔍 Filtered channels: ${allChannelsCount} total, ${channelsFromBigCommerce.length} active`
+      );
+    }
+    
     console.log(
       `✅ Channel list fetched successfully: ${channelsFromBigCommerce.length} channels`
     );
@@ -116,6 +133,51 @@ const fetchChannelList = async (accessToken, storeHash, storeId = null) => {
 
         // Fetch database channels after sync
         databaseChannels = await Channel.findByStoreId(storeId);
+        
+        // If filtering for active channels only, remove any inactive channels from database
+        if (filterActiveOnly && databaseChannels && databaseChannels.length > 0) {
+          const inactiveChannels = databaseChannels.filter(
+            (channel) => channel.status !== "active"
+          );
+          
+          if (inactiveChannels.length > 0) {
+            console.log(
+              `🗑️ Removing ${inactiveChannels.length} inactive channels from database`
+            );
+            
+            const inactiveChannelIds = inactiveChannels.map((ch) => ch._id);
+            const storeObjectId =
+              typeof storeId === "string"
+                ? new mongoose.Types.ObjectId(storeId)
+                : storeId;
+            
+            await Channel.deleteMany({
+              store_id: storeObjectId,
+              _id: { $in: inactiveChannelIds },
+            });
+            
+            console.log("✅ Inactive channels removed successfully");
+            
+            // Fetch updated channel list after removal
+            databaseChannels = await Channel.findByStoreId(storeId);
+          }
+        }
+        
+        // Seed email templates for newly synced channels
+        if (databaseChannels && databaseChannels.length > 0) {
+          try {
+            const { seedEmailTemplatesForChannels } = require("./emailTemplateSeeder");
+            const channelIds = databaseChannels.map((ch) => ch._id);
+            console.log(`🌱 Seeding email templates for ${channelIds.length} channels...`);
+            await seedEmailTemplatesForChannels(channelIds);
+          } catch (seedError) {
+            console.error("❌ Error seeding email templates:", {
+              message: seedError.message,
+              stack: seedError.stack,
+            });
+            // Don't fail the entire process if seeding fails
+          }
+        }
       } catch (syncError) {
         console.error("❌ Error syncing channels with database:", {
           message: syncError.message,
@@ -125,7 +187,10 @@ const fetchChannelList = async (accessToken, storeHash, storeId = null) => {
         try {
           databaseChannels = await Channel.findByStoreId(storeId);
         } catch (fetchError) {
-          console.error("❌ Error fetching database channels:", fetchError.message);
+          console.error(
+            "❌ Error fetching database channels:",
+            fetchError.message
+          );
         }
       }
     } else {
@@ -136,26 +201,54 @@ const fetchChannelList = async (accessToken, storeHash, storeId = null) => {
 
     // Return database channels if available, otherwise return BigCommerce channels
     // Format database channels to include MongoDB _id and BigCommerce channel_id
+    // Filter to only return active channels for UI display
     if (databaseChannels && databaseChannels.length > 0) {
-      return databaseChannels.map((channel) => ({
-        id: channel._id.toString(),
-        channel_id: channel.channel_id,
-        channel_name: channel.channel_name,
-        channel_type: channel.channel_type,
-        platform: channel.platform,
-        status: channel.status,
-      }));
+      const formattedChannels = databaseChannels
+        .filter((channel) => channel.status === "active")
+        .map((channel) => ({
+          id: channel._id.toString(),
+          channel_id: channel.channel_id,
+          channel_name: channel.channel_name,
+          channel_type: channel.channel_type,
+          platform: channel.platform,
+          status: channel.status,
+          setupprogress: channel.setupprogress || 0,
+          pointsTierSystemCompleted: channel.pointsTierSystemCompleted || false,
+          waysToEarnCompleted: channel.waysToEarnCompleted || false,
+          waysToRedeemCompleted: channel.waysToRedeemCompleted || false,
+          customiseWidgetCompleted: channel.customiseWidgetCompleted || false,
+        }));
+      
+      console.log(
+        `📋 Returning ${formattedChannels.length} active channels (filtered from ${databaseChannels.length} total)`
+      );
+      
+      return formattedChannels;
     }
 
     // Fallback to BigCommerce channels if database channels are not available
-    return channelsFromBigCommerce.map((channel) => ({
-      id: null, // No database ID available
-      channel_id: channel.id,
-      channel_name: channel.name,
-      channel_type: channel.type,
-      platform: channel.platform,
-      status: channel.status,
-    }));
+    // Filter to only return active channels
+    const formattedChannels = channelsFromBigCommerce
+      .filter((channel) => channel.status === "active")
+      .map((channel) => ({
+        id: null, // No database ID available
+        channel_id: channel.id,
+        channel_name: channel.name,
+        channel_type: channel.type,
+        platform: channel.platform,
+        status: channel.status,
+        setupprogress: 0, // Default to 0 for new channels
+        pointsTierSystemCompleted: false,
+        waysToEarnCompleted: false,
+        waysToRedeemCompleted: false,
+        customiseWidgetCompleted: false,
+      }));
+    
+    console.log(
+      `📋 Returning ${formattedChannels.length} active channels (filtered from ${channelsFromBigCommerce.length} total)`
+    );
+    
+    return formattedChannels;
   } catch (error) {
     console.error(
       "❌ Error fetching channel list:",
