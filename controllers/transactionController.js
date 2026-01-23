@@ -663,10 +663,190 @@ const bulkImportPoints = async (req, res, next) => {
   }
 };
 
+/**
+ * Get points awarded statistics for dashboard
+ */
+const getPointsAwardedStats = async (req, res, next) => {
+  try {
+    const { storeId, channelId, startDate, endDate } = req.query;
+
+    // Validate required parameters
+    if (!storeId) {
+      return res.status(400).json({
+        success: false,
+        message: "storeId is required",
+      });
+    }
+
+    if (!channelId) {
+      return res.status(400).json({
+        success: false,
+        message: "channelId is required",
+      });
+    }
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "startDate and endDate are required",
+      });
+    }
+
+    // Transaction names to match
+    const transactionNames = [
+      "Sign Up Bonus",
+      "Referral",
+      "Purchase Product",
+      "Birthday Celebration",
+      "Newsletter Bonus",
+      "Profile Completion",
+      "Event Celebration",
+      "Rejoin Bonus",
+    ];
+
+    const storeObjectId = new mongoose.Types.ObjectId(storeId);
+    const numericChannelId = parseInt(channelId);
+    const startDateCurrent = new Date(startDate);
+    const endDateCurrent = new Date(endDate);
+    endDateCurrent.setHours(23, 59, 59, 999); // Set to end of day
+
+    // Calculate previous period (same duration before start date)
+    const periodDuration = endDateCurrent.getTime() - startDateCurrent.getTime();
+    const endDatePrevious = new Date(startDateCurrent.getTime() - 1);
+    const startDatePrevious = new Date(endDatePrevious.getTime() - periodDuration);
+
+    // Aggregate current period transactions
+    const currentPeriodResult = await Transaction.aggregate([
+      {
+        $match: {
+          store_id: storeObjectId,
+          channel_id: numericChannelId,
+          type: "earn", // Only earned points
+          status: "completed",
+          $or: [
+            { description: { $in: transactionNames } },
+            { description: { $regex: /^Event: / } }, // Match "Event: *" patterns
+          ],
+          createdAt: {
+            $gte: startDateCurrent,
+            $lte: endDateCurrent,
+          },
+        },
+      },
+      {
+        $addFields: {
+          // Normalize event descriptions to "Event Celebration"
+          normalizedDescription: {
+            $cond: {
+              if: { $regexMatch: { input: "$description", regex: /^Event: / } },
+              then: "Event Celebration",
+              else: "$description",
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$normalizedDescription",
+          totalPointsCurrent: { $sum: "$points" },
+        },
+      },
+    ]);
+
+    // Aggregate previous period transactions
+    const previousPeriodResult = await Transaction.aggregate([
+      {
+        $match: {
+          store_id: storeObjectId,
+          channel_id: numericChannelId,
+          type: "earn", // Only earned points
+          status: "completed",
+          $or: [
+            { description: { $in: transactionNames } },
+            { description: { $regex: /^Event: / } }, // Match "Event: *" patterns
+          ],
+          createdAt: {
+            $gte: startDatePrevious,
+            $lte: endDatePrevious,
+          },
+        },
+      },
+      {
+        $addFields: {
+          // Normalize event descriptions to "Event Celebration"
+          normalizedDescription: {
+            $cond: {
+              if: { $regexMatch: { input: "$description", regex: /^Event: / } },
+              then: "Event Celebration",
+              else: "$description",
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$normalizedDescription",
+          totalPointsPrevious: { $sum: "$points" },
+        },
+      },
+    ]);
+
+    // Create maps for easy lookup
+    const currentMap = {};
+    currentPeriodResult.forEach((item) => {
+      currentMap[item._id] = item.totalPointsCurrent;
+    });
+
+    const previousMap = {};
+    previousPeriodResult.forEach((item) => {
+      previousMap[item._id] = item.totalPointsPrevious;
+    });
+
+    // Calculate statistics for each transaction type
+    const stats = transactionNames.map((transactionName) => {
+      const totalPointsCurrent = currentMap[transactionName] || 0;
+      const totalPointsPrevious = previousMap[transactionName] || 0;
+
+      // Calculate growth percentage
+      let growth = 0;
+      if (totalPointsPrevious > 0) {
+        growth = ((totalPointsCurrent - totalPointsPrevious) / totalPointsPrevious) * 100;
+      } else if (totalPointsCurrent > 0) {
+        growth = 100; // 100% growth if previous was 0 and current > 0
+      }
+
+      return {
+        transactionName,
+        totalPointsCurrent,
+        totalPointsPrevious,
+        growth: Math.round(growth * 100) / 100, // Round to 2 decimal places
+      };
+    });
+
+    // Calculate total points awarded
+    const totalPointsAwarded = stats.reduce(
+      (sum, stat) => sum + stat.totalPointsCurrent,
+      0
+    );
+
+    res.json({
+      success: true,
+      data: {
+        totalPointsAwarded,
+        stats,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error getting points awarded stats:", error);
+    next(error);
+  }
+};
+
 module.exports = {
   getTransactions,
   getTransactionById,
   createTransaction,
   getCustomerTransactions,
   bulkImportPoints,
+  getPointsAwardedStats,
 };

@@ -7,6 +7,7 @@ const {
   fetchChannelList,
   buildSessionToken,
   SESSION_TTL_SECONDS,
+  FRONTEND_BASE_URL,
 } = require("../helpers/bigcommerce");
 
 const login = async (req, res, next) => {
@@ -138,12 +139,61 @@ const handleAuthCallback = async (req, res) => {
 
     console.log("✅ Auth callback completed successfully");
 
-    res.status(200).json({
-      status_code: 200,
-      status: true,
-      data: resData,
-      message: "App installed successfully!",
-    });
+    // Get the store object to generate session token
+    const store = await Store.findByHash(storeHash);
+    if (!store) {
+      throw new Error("Store not found after creation");
+    }
+
+    // Generate session token for immediate authentication
+    const sessionToken = buildSessionToken(store);
+    const sessionExpiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
+
+    // Redirect to frontend install page which will handle authentication and redirect to setup
+    const redirectUrl = new URL("/install", FRONTEND_BASE_URL);
+    redirectUrl.searchParams.set("storeHash", storeHash);
+    redirectUrl.searchParams.set("storeId", storeId.toString());
+    redirectUrl.searchParams.set("sessionToken", sessionToken);
+    redirectUrl.searchParams.set("sessionExpiresAt", sessionExpiresAt.toString());
+    if (user?.email) {
+      redirectUrl.searchParams.set("email", user.email);
+    }
+
+    console.log("🔁 Redirecting to setup page:", redirectUrl.toString());
+
+    // Return HTML page that redirects the parent window (BigCommerce shows this in an iframe)
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta http-equiv="refresh" content="0;url=${redirectUrl.toString()}" />
+          <title>Installation Complete</title>
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 60px; }
+            .card {
+              display: inline-block;
+              padding: 32px;
+              border-radius: 12px;
+              background: #fff;
+              box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            }
+            .muted { color: #888; font-size: 14px; }
+            .success { color: #10b981; font-size: 18px; font-weight: bold; margin-bottom: 16px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="success">✓ Installation Successful!</div>
+            <h1>Welcome to FavLoyalty</h1>
+            <p>Redirecting you to the setup page...</p>
+            <p class="muted">Store: ${storeHash}</p>
+          </div>
+          <script>
+            window.top.location.href = "${redirectUrl.toString()}";
+          </script>
+        </body>
+      </html>
+    `);
   } catch (error) {
     console.error("❌ OAuth Error:", {
       message: error.message,

@@ -30,6 +30,7 @@ const {
   createTransaction,
   getCustomerTransactions,
   bulkImportPoints,
+  getPointsAwardedStats,
 } = require("../controllers/transactionController");
 
 const router = express.Router();
@@ -57,9 +58,10 @@ router.get("/customers", requireAuth, getCustomers);
 router.get("/customers/:customerId", requireAuth, getCustomerById);
 router.post("/customers/recalculate-tiers", requireAuth, recalculateCustomerTiers);
 router.get("/transactions", requireAuth, getTransactions);
-router.get("/transactions/:transactionId", requireAuth, getTransactionById);
-router.post("/transactions", requireAuth, createTransaction);
-router.post("/transactions/bulk-import", requireAuth, bulkImportPoints);
+router.get("/transactions/points-awarded-stats", requireAuth, getPointsAwardedStats);
 router.get("/transactions/customer/:customerId", requireAuth, getCustomerTransactions);
+router.post("/transactions/bulk-import", requireAuth, bulkImportPoints);
+router.post("/transactions", requireAuth, createTransaction);
+router.get("/transactions/:transactionId", requireAuth, getTransactionById);
 
 module.exports = router;
