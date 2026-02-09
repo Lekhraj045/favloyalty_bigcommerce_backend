@@ -78,6 +78,10 @@ const profileSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    gender: {
+      type: String,
+      default: null,
+    },
   },
   { _id: false, timestamps: false }
 );
@@ -117,6 +121,11 @@ const customerSchema = new mongoose.Schema(
     canChangeProfile: {
       type: Boolean,
       default: true,
+    },
+    dob: {
+      type: Date,
+      default: null,
+      comment: "Date of birth; used for birthday points (Ways to Earn)",
     },
     currentTier: {
       type: currentTierSchema,
@@ -174,6 +183,7 @@ const customerSchema = new mongoose.Schema(
         contactNo: null,
         ageGroup: null,
         weddingAnniversary: null,
+        gender: null,
       }),
     },
     referral_points: {
@@ -206,7 +216,10 @@ const customerSchema = new mongoose.Schema(
 customerSchema.index({ store_id: 1, channel_id: 1 });
 customerSchema.index({ store_id: 1, email: 1 });
 customerSchema.index({ email: 1 });
-customerSchema.index({ store_id: 1, channel_id: 1, email: 1 }, { unique: true });
+customerSchema.index(
+  { store_id: 1, channel_id: 1, email: 1 },
+  { unique: true }
+);
 customerSchema.index({ store_id: 1, bcCustomerId: 1 }); // For quick lookups by BigCommerce customer ID
 
 // Static methods
@@ -220,6 +233,7 @@ customerSchema.statics.create = async function (customerData) {
     acceptsMarketing,
     canChangeDob,
     canChangeProfile,
+    dob,
     currentTier,
     default_address,
     firstName,
@@ -248,7 +262,9 @@ customerSchema.statics.create = async function (customerData) {
       bcCustomerId: bcCustomerId || null,
       acceptsMarketing: acceptsMarketing || false,
       canChangeDob: canChangeDob !== undefined ? canChangeDob : true,
-      canChangeProfile: canChangeProfile !== undefined ? canChangeProfile : true,
+      canChangeProfile:
+        canChangeProfile !== undefined ? canChangeProfile : true,
+      dob: dob ?? null,
       currentTier: currentTier || {
         tierIndex: 0,
         multiplier: 1,
@@ -270,6 +286,7 @@ customerSchema.statics.create = async function (customerData) {
         contactNo: null,
         ageGroup: null,
         weddingAnniversary: null,
+        gender: null,
       },
       referral_points: referral_points || 0,
       refferalCount: refferalCount || 0,
@@ -286,13 +303,18 @@ customerSchema.statics.create = async function (customerData) {
   }
 };
 
-customerSchema.statics.findByEmail = async function (email, storeId, channelId) {
+customerSchema.statics.findByEmail = async function (
+  email,
+  storeId,
+  channelId
+) {
   try {
     const query = { email };
     if (storeId) {
-      query.store_id = typeof storeId === "string" 
-        ? new mongoose.Types.ObjectId(storeId) 
-        : storeId;
+      query.store_id =
+        typeof storeId === "string"
+          ? new mongoose.Types.ObjectId(storeId)
+          : storeId;
     }
     if (channelId !== undefined) {
       query.channel_id = channelId;
@@ -304,7 +326,10 @@ customerSchema.statics.findByEmail = async function (email, storeId, channelId) 
   }
 };
 
-customerSchema.statics.findByStoreAndChannel = async function (storeId, channelId) {
+customerSchema.statics.findByStoreAndChannel = async function (
+  storeId,
+  channelId
+) {
   try {
     const storeObjectId =
       typeof storeId === "string"
@@ -316,7 +341,10 @@ customerSchema.statics.findByStoreAndChannel = async function (storeId, channelI
       channel_id: channelId,
     }).sort({ createdAt: -1 });
   } catch (error) {
-    console.error("❌ Error finding customers by store and channel:", error.message);
+    console.error(
+      "❌ Error finding customers by store and channel:",
+      error.message
+    );
     throw error;
   }
 };
@@ -335,7 +363,10 @@ customerSchema.statics.findByStoreId = async function (storeId) {
   }
 };
 
-customerSchema.statics.updateCustomer = async function (customerId, updateData) {
+customerSchema.statics.updateCustomer = async function (
+  customerId,
+  updateData
+) {
   try {
     const customerObjectId =
       typeof customerId === "string"
@@ -379,16 +410,27 @@ customerSchema.statics.updatePoints = async function (
     customer.points = (customer.points || 0) + pointsChange;
 
     // Update earned/redeemed based on transaction type
-    if (transactionType === "earn" || transactionType === "signup" || transactionType === "referral") {
-      customer.pointsEarned = (customer.pointsEarned || 0) + Math.abs(pointsChange);
+    if (
+      transactionType === "earn" ||
+      transactionType === "signup" ||
+      transactionType === "referral"
+    ) {
+      customer.pointsEarned =
+        (customer.pointsEarned || 0) + Math.abs(pointsChange);
+      if (transactionType === "referral" && pointsChange > 0) {
+        customer.referral_points = (customer.referral_points || 0) + pointsChange;
+        customer.refferalCount = (customer.refferalCount || 0) + 1;
+      }
     } else if (transactionType === "redeem") {
-      customer.pointsRedeemed = (customer.pointsRedeemed || 0) + Math.abs(pointsChange);
+      customer.pointsRedeemed =
+        (customer.pointsRedeemed || 0) + Math.abs(pointsChange);
     } else if (transactionType === "adjustment") {
       // For adjustments, update earned/redeemed based on sign
       if (pointsChange > 0) {
         customer.pointsEarned = (customer.pointsEarned || 0) + pointsChange;
       } else {
-        customer.pointsRedeemed = (customer.pointsRedeemed || 0) + Math.abs(pointsChange);
+        customer.pointsRedeemed =
+          (customer.pointsRedeemed || 0) + Math.abs(pointsChange);
       }
     }
 

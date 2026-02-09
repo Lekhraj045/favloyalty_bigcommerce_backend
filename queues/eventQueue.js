@@ -10,7 +10,7 @@ const Point = require("../models/Point");
 const Store = require("../models/Store");
 const Channel = require("../models/Channel");
 const { sendFestivalEmail, getExpiryDate } = require("../helpers/emailHelpers");
-const { calculateAndUpdateCustomerTier } = require("../helpers/tierHelper");
+const { calculateAndUpdateCustomerTier, checkAndScheduleTierUpgradeEmail } = require("../helpers/tierHelper");
 
 // ============================================================
 // Initialize Agenda with MongoDB
@@ -356,10 +356,25 @@ async function processEventPoints(job = null, jobData = {}) {
               try {
                 const freshCustomer = await Customer.findById(customer._id);
                 if (freshCustomer) {
+                  // Capture previous tier before recalculation
+                  const previousTier = freshCustomer.currentTier
+                    ? { ...freshCustomer.currentTier.toObject?.() || freshCustomer.currentTier }
+                    : null;
+                  
                   const tierResult = await calculateAndUpdateCustomerTier(freshCustomer, pointModel);
                   if (tierResult.tierUpdated) {
                     console.log(
                       `🎯 Tier updated for customer ${customer._id} (${customer.email}) during retry: ${tierResult.message}`
+                    );
+                    
+                    // Schedule tier upgrade email if tier was upgraded
+                    await checkAndScheduleTierUpgradeEmail(
+                      tierResult,
+                      previousTier,
+                      freshCustomer._id,
+                      store._id,
+                      channel._id,
+                      pointModel,
                     );
                   }
                 }
@@ -628,10 +643,25 @@ async function processEventPoints(job = null, jobData = {}) {
 
             // STEP 3: Calculate and update customer tier if tier system is enabled
             try {
+              // Capture previous tier before recalculation
+              const previousTier = verifyCustomer.currentTier
+                ? { ...verifyCustomer.currentTier.toObject?.() || verifyCustomer.currentTier }
+                : null;
+              
               const tierResult = await calculateAndUpdateCustomerTier(verifyCustomer, pointModel);
               if (tierResult.tierUpdated) {
                 console.log(
                   `🎯 Tier updated for customer ${customer._id} (${customer.email}): ${tierResult.message}`
+                );
+                
+                // Schedule tier upgrade email if tier was upgraded
+                await checkAndScheduleTierUpgradeEmail(
+                  tierResult,
+                  previousTier,
+                  verifyCustomer._id,
+                  store._id,
+                  channel._id,
+                  pointModel,
                 );
               } else {
                 console.log(
@@ -1235,6 +1265,44 @@ async function removeOldJobs(daysOld = 7) {
   return result;
 }
 
+/**
+ * Cancel all scheduled event points jobs for a specific channel.
+ * Called when resetting channel settings and deleting all events.
+ */
+async function cancelEventJobsForChannel(channelId) {
+  if (!agenda) {
+    await initializeAgenda();
+  }
+
+  const channelIdStr =
+    typeof channelId === "string" ? channelId : channelId?.toString?.();
+  if (!channelIdStr) return 0;
+
+  try {
+    const jobs = await agenda.jobs({
+      name: "process event points",
+      "data.channelId": channelIdStr,
+      nextRunAt: { $ne: null },
+    });
+
+    let cancelledCount = 0;
+    for (const job of jobs) {
+      await job.remove();
+      cancelledCount++;
+    }
+
+    if (cancelledCount > 0) {
+      console.log(
+        `🗑️  Cancelled ${cancelledCount} event jobs for channel ${channelIdStr}`
+      );
+    }
+    return cancelledCount;
+  } catch (error) {
+    console.error("Error cancelling event jobs for channel:", error);
+    return 0;
+  }
+}
+
 // ============================================================
 // Initialize on module load
 // ============================================================
@@ -1259,5 +1327,6 @@ module.exports = {
   gracefulShutdown,
   getQueueStats,
   removeOldJobs,
+  cancelEventJobsForChannel,
   agenda,
 };

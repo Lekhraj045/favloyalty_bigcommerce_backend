@@ -206,10 +206,23 @@ redeemSchema.statics.addCoupon = async function (data) {
     );
     const expireValue = hasExpiry ? data.expire : null;
 
+    // For freeProduct, set coupon.value from product points when pointValue is missing/zero
+    let couponValue = data.pointValue;
+    if (
+      data.redeemType === "freeProduct" &&
+      (!couponValue || couponValue < 1) &&
+      selectedItems?.length
+    ) {
+      const points = selectedItems
+        .map((i) => parseInt(String(i.pointRequired || "0"), 10))
+        .filter((n) => !isNaN(n) && n > 0);
+      if (points.length) couponValue = Math.min(...points);
+    }
+
     redeems.coupon = {
       active: true,
       target_type: data.target_type,
-      value: data.pointValue,
+      value: couponValue,
       expire: expireValue, // Will be null if not provided
       hasExpiry: hasExpiry, // Track if expiry is enabled
       discountAmount: data.discountAmount,
@@ -313,6 +326,19 @@ redeemSchema.statics.updateCoupon = async function (data) {
     );
     const expireValue = hasExpiry ? data.expire : null;
 
+    // For freeProduct, ensure coupon.value is set from product points when missing/zero
+    let pointValueToSet = data.pointValue;
+    if (
+      data.redeemType === "freeProduct" &&
+      (pointValueToSet == null || pointValueToSet < 1) &&
+      selectedItems?.length
+    ) {
+      const points = selectedItems
+        .map((i) => parseInt(String(i.pointRequired || "0"), 10))
+        .filter((n) => !isNaN(n) && n > 0);
+      if (points.length) pointValueToSet = Math.min(...points);
+    }
+
     let redeemUpdate = {
       updatedAt: new Date(),
       "coupon.updatedAt": new Date(),
@@ -321,7 +347,7 @@ redeemSchema.statics.updateCoupon = async function (data) {
       channel_id: data.channel_id ? new ObjectID(data.channel_id) : undefined,
       redeemType: data.redeemType,
       "coupon.target_type": data.target_type,
-      "coupon.value": data.pointValue,
+      "coupon.value": pointValueToSet,
       "coupon.expire": expireValue, // Will be null if not provided
       "coupon.hasExpiry": hasExpiry, // Explicitly convert to boolean
       "coupon.discountAmount": data.discountAmount,
@@ -407,7 +433,12 @@ redeemSchema.statics.findByChannelId = async function (channelId) {
 // If you need similar functionality, you can implement it here
 // For example, updating Store or Channel settings based on redeem settings
 redeemSchema.post("save", async function (doc, next) {
-  console.log("Redeem setting saved for store:", doc.store_id, "channel:", doc.channel_id);
+  console.log(
+    "Redeem setting saved for store:",
+    doc.store_id,
+    "channel:",
+    doc.channel_id
+  );
 
   // TODO: Add any post-save logic here if needed
   // Example: Update store/channel progress tracking, send notifications, etc.
@@ -416,4 +447,3 @@ redeemSchema.post("save", async function (doc, next) {
 });
 
 module.exports = mongoose.model("redeem-setting", redeemSchema);
-

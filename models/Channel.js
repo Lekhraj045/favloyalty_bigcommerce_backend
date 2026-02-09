@@ -49,10 +49,25 @@ const channelSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Controls whether the widget should be visible for this channel
+    widget_visibility: {
+      type: Boolean,
+      default: true,
+    },
+    // Script ID (e.g. from BigCommerce) – empty by default, populated later
+    script_id: {
+      type: String,
+      default: null,
+    },
+    // Default currency for this channel (ISO 4217, e.g. USD, INR) from BigCommerce channel currency assignments
+    default_currency: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 channelSchema.index({ store_id: 1, channel_id: 1 }, { unique: true });
@@ -94,6 +109,7 @@ channelSchema.statics.saveChannels = async function (storeId, channels) {
             channel_type: channel.type || null,
             platform: channel.platform || null,
             status: channel.status || null,
+            default_currency: channel.default_currency ?? null,
           },
           $setOnInsert: {
             setupprogress: 0,
@@ -101,13 +117,15 @@ channelSchema.statics.saveChannels = async function (storeId, channels) {
             waysToEarnCompleted: false,
             waysToRedeemCompleted: false,
             customiseWidgetCompleted: false,
+            widget_visibility: true,
+            script_id: null,
           },
         },
         {
           upsert: true,
           new: true,
           runValidators: true,
-        }
+        },
       );
 
       savedChannels.push({
@@ -154,12 +172,14 @@ channelSchema.statics.create = async function (channelData) {
         waysToEarnCompleted: false,
         waysToRedeemCompleted: false,
         customiseWidgetCompleted: false,
+        widget_visibility: true,
+        script_id: null,
       },
     },
     {
       upsert: true,
       new: true,
-    }
+    },
   );
 
   return result;
@@ -213,7 +233,7 @@ channelSchema.statics.findById = async function (id) {
 };
 
 channelSchema.statics.update = async function (id, channelData) {
-  const { channelName, channelType, platform, status } = channelData;
+  const { channelName, channelType, platform, status, script_id } = channelData;
 
   const objectId =
     typeof id === "string" ? new mongoose.Types.ObjectId(id) : id;
@@ -223,11 +243,12 @@ channelSchema.statics.update = async function (id, channelData) {
   if (channelType !== undefined) updateFields.channel_type = channelType;
   if (platform !== undefined) updateFields.platform = platform;
   if (status !== undefined) updateFields.status = status;
+  if (script_id !== undefined) updateFields.script_id = script_id;
 
   const channel = await this.findByIdAndUpdate(
     objectId,
     { $set: updateFields },
-    { new: true }
+    { new: true },
   );
 
   if (!channel) {
@@ -352,14 +373,14 @@ channelSchema.statics.syncChannels = async function (storeId, newChannels) {
 
   const existingChannels = await this.find(
     { store_id: storeObjectId },
-    { channel_id: 1 }
+    { channel_id: 1 },
   );
 
   const existingChannelIds = existingChannels.map((c) => c.channel_id);
   const newChannelIds = newChannels.map((c) => c.id);
 
   const channelsToDelete = existingChannelIds.filter(
-    (id) => !newChannelIds.includes(id)
+    (id) => !newChannelIds.includes(id),
   );
 
   if (channelsToDelete.length > 0) {
@@ -383,6 +404,7 @@ channelSchema.statics.syncChannels = async function (storeId, newChannels) {
             channel_type: channel.type || null,
             platform: channel.platform || null,
             status: channel.status || null,
+            default_currency: channel.default_currency ?? null,
           },
           $setOnInsert: {
             setupprogress: 0,
@@ -390,12 +412,14 @@ channelSchema.statics.syncChannels = async function (storeId, newChannels) {
             waysToEarnCompleted: false,
             waysToRedeemCompleted: false,
             customiseWidgetCompleted: false,
+            widget_visibility: true,
+            script_id: null,
           },
         },
         {
           upsert: true,
           new: true,
-        }
+        },
       );
 
       savedChannels.push({

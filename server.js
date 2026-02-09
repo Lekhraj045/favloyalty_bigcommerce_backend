@@ -13,6 +13,9 @@ require("./models/Point"); // This ensures the Point model is registered
 require("./models/Plan"); // This ensures the Plan model is registered
 require("./models/Customer"); // This ensures the Customer model is registered
 require("./models/Transaction"); // This ensures the Transaction model is registered
+require("./models/Subscription"); // This ensures the Subscription model is registered
+require("./models/WebhookLog"); // This ensures the WebhookLog model is registered
+require("./models/Referral"); // Refer & Earn referral tracking
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -74,6 +77,15 @@ app.listen(PORT, () => {
   console.log(`✅ Auth Callback: ${process.env.AUTH_CALLBACK}`);
   console.log(`✅ Frontend URL: ${process.env.FRONTEND_BASE_URL}`);
   console.log(`✅ Database: MongoDB - ${process.env.DB_NAME || "N/A"}`);
+  const webhookBase =
+    process.env.WEBHOOK_BASE_URL || process.env.BACKEND_URL;
+  if (webhookBase) {
+    console.log(`✅ Webhook base URL: ${webhookBase} (BigCommerce will POST to ${webhookBase}/api/webhooks/receive)`);
+  } else {
+    console.warn(
+      "⚠️ WEBHOOK_BASE_URL / BACKEND_URL not set — order webhooks will not be received. Set a public HTTPS URL in .env",
+    );
+  }
   console.log("=".repeat(50));
 });
 

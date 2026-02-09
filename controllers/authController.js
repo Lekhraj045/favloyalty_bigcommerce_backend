@@ -9,6 +9,36 @@ const {
   SESSION_TTL_SECONDS,
   FRONTEND_BASE_URL,
 } = require("../helpers/bigcommerce");
+const { createOrUpdateWebhook } = require("../services/bigcommerceWebhookService");
+
+/** Scopes we subscribe to on install so BigCommerce sends webhooks to our /api/webhooks/receive */
+const WEBHOOK_SCOPES = [
+  "store/order/statusUpdated",
+  "store/customer/created",
+];
+
+/**
+ * Subscribe to BigCommerce webhooks for this store (called on install).
+ * Non-blocking: logs errors but does not fail install.
+ */
+const subscribeWebhooksOnInstall = async (storeHash, accessToken) => {
+  const baseUrl = process.env.BACKEND_URL || process.env.WEBHOOK_BASE_URL;
+  if (!baseUrl) {
+    console.warn(
+      "⚠️ WEBHOOK_BASE_URL (or BACKEND_URL) not set — skipping webhook subscription",
+    );
+    return;
+  }
+  const destination = `${baseUrl}/api/webhooks/receive`;
+  for (const scope of WEBHOOK_SCOPES) {
+    try {
+      await createOrUpdateWebhook(storeHash, accessToken, scope, destination);
+      console.log(`✅ Webhook subscribed on install: ${scope}`);
+    } catch (err) {
+      console.error(`❌ Failed to subscribe webhook ${scope} on install:`, err.message);
+    }
+  }
+};
 
 const login = async (req, res, next) => {
   try {
@@ -115,14 +145,17 @@ const handleAuthCallback = async (req, res) => {
     try {
       const existingChannels = await Channel.findByStoreId(storeId);
       savedChannels = existingChannels || [];
-      console.log(
-        `💾 Database now contains ${savedChannels.length} channels for store: ${storeHash}`
-      );
-    } catch (channelError) {
-      console.error("❌ Error retrieving saved channels:", {
-        message: channelError.message,
-      });
-    }
+    console.log(
+      `💾 Database now contains ${savedChannels.length} channels for store: ${storeHash}`
+    );
+  } catch (channelError) {
+    console.error("❌ Error retrieving saved channels:", {
+      message: channelError.message,
+    });
+  }
+
+    // Subscribe to webhooks (order status, customer created) on install
+    await subscribeWebhooksOnInstall(storeHash, access_token);
 
     // Build response data
     const resData = {

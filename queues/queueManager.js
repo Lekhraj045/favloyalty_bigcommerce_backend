@@ -13,6 +13,14 @@ const {
 
 const {
   addBirthdayPointsJob,
+  addBirthdayEmailJob: addBirthdayEmailJobToQueue,
+  addProfileCompletionEmailJob: addProfileCompletionEmailJobToQueue,
+  addNewsletterSubscriptionEmailJob: addNewsletterSubscriptionEmailJobToQueue,
+  addSignUpEmailJob: addSignUpEmailJobToQueue,
+  addReferAndEarnEmailJob: addReferAndEarnEmailJobToQueue,
+  addReferralInvitationEmailJob: addReferralInvitationEmailJobToQueue,
+  addTierUpgradeEmailJob: addTierUpgradeEmailJobToQueue,
+  addRejoiningEmailJob: addRejoiningEmailJobToQueue,
   setupRecurringBirthdayJob,
   initializeAgenda: initializeBirthdayAgenda,
   getQueueStats: getBirthdayStats,
@@ -53,6 +61,15 @@ class QueueManager {
       },
       birthday: {
         addJob: addBirthdayPointsJob,
+        addBirthdayEmailJob: addBirthdayEmailJobToQueue,
+        addProfileCompletionEmailJob: addProfileCompletionEmailJobToQueue,
+        addNewsletterSubscriptionEmailJob:
+          addNewsletterSubscriptionEmailJobToQueue,
+        addSignUpEmailJob: addSignUpEmailJobToQueue,
+        addReferAndEarnEmailJob: addReferAndEarnEmailJobToQueue,
+        addReferralInvitationEmailJob: addReferralInvitationEmailJobToQueue,
+        addTierUpgradeEmailJob: addTierUpgradeEmailJobToQueue,
+        addRejoiningEmailJob: addRejoiningEmailJobToQueue,
         setupRecurring: setupRecurringBirthdayJob,
         initialize: initializeBirthdayAgenda,
         getStats: getBirthdayStats,
@@ -121,7 +138,7 @@ class QueueManager {
             console.error(`❌ Failed to initialize ${queueName} queue:`, error);
             throw error;
           }
-        }
+        },
       );
 
       await Promise.all(initPromises);
@@ -154,7 +171,7 @@ class QueueManager {
     console.log("🔄 Setting up recurring jobs...");
 
     const recurringQueues = Object.entries(this.agendaQueues).filter(
-      ([_, config]) => config.setupRecurring !== null
+      ([_, config]) => config.setupRecurring !== null,
     );
 
     for (const [queueName, queueConfig] of recurringQueues) {
@@ -165,7 +182,7 @@ class QueueManager {
       } catch (error) {
         console.error(
           `❌ Failed to setup recurring jobs for ${queueName}:`,
-          error
+          error,
         );
       }
     }
@@ -217,6 +234,176 @@ class QueueManager {
     }
   }
 
+  // Schedule one-off birthday email (e.g. 5 seconds after widget awards points)
+  async addBirthdayEmailJob(data = {}, options = {}) {
+    try {
+      if (!this.initializedQueues.has("birthday")) {
+        await this.agendaQueues.birthday.initialize();
+        this.initializedQueues.add("birthday");
+      }
+      const job = await this.agendaQueues.birthday.addBirthdayEmailJob(
+        data,
+        options,
+      );
+      console.log(`✅ Scheduled birthday email job: ${job?.attrs?._id}`);
+      return job;
+    } catch (error) {
+      console.error("❌ Error scheduling birthday email job:", error);
+      throw error;
+    }
+  }
+
+  // Schedule one-off profile completion email (e.g. 5 seconds after widget awards points)
+  async addProfileCompletionEmailJob(data = {}, options = {}) {
+    try {
+      if (!this.initializedQueues.has("birthday")) {
+        await this.agendaQueues.birthday.initialize();
+        this.initializedQueues.add("birthday");
+      }
+      const job = await this.agendaQueues.birthday.addProfileCompletionEmailJob(
+        data,
+        options,
+      );
+      console.log(
+        `✅ Scheduled profile completion email job: ${job?.attrs?._id}`,
+      );
+      return job;
+    } catch (error) {
+      console.error("❌ Error scheduling profile completion email job:", error);
+      throw error;
+    }
+  }
+
+  // Schedule one-off Refer & Earn reward email (after referral points are awarded)
+  async addReferAndEarnEmailJob(data = {}, options = {}) {
+    try {
+      if (!this.initializedQueues.has("birthday")) {
+        await this.agendaQueues.birthday.initialize();
+        this.initializedQueues.add("birthday");
+      }
+      const job = await this.agendaQueues.birthday.addReferAndEarnEmailJob(
+        data,
+        options,
+      );
+      console.log(`✅ Scheduled refer & earn email job: ${job?.attrs?._id}`);
+      return job;
+    } catch (error) {
+      console.error("❌ Error scheduling refer & earn email job:", error);
+      throw error;
+    }
+  }
+
+  // Schedule one-off referral invitation email (to the referred person, when referrer submits)
+  async addReferralInvitationEmailJob(data = {}, options = {}) {
+    try {
+      if (!this.initializedQueues.has("birthday")) {
+        await this.agendaQueues.birthday.initialize();
+        this.initializedQueues.add("birthday");
+      }
+      const job =
+        await this.agendaQueues.birthday.addReferralInvitationEmailJob(
+          data,
+          options,
+        );
+      console.log(
+        `✅ Scheduled referral invitation email job: ${job?.attrs?._id}`,
+      );
+      return job;
+    } catch (error) {
+      console.error(
+        "❌ Error scheduling referral invitation email job:",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  // Schedule one-off newsletter subscription email (only when Loyalty Program Newsletter email is enabled for channel)
+  async addNewsletterSubscriptionEmailJob(data = {}, options = {}) {
+    try {
+      if (!this.initializedQueues.has("birthday")) {
+        await this.agendaQueues.birthday.initialize();
+        this.initializedQueues.add("birthday");
+      }
+      const job =
+        await this.agendaQueues.birthday.addNewsletterSubscriptionEmailJob(
+          data,
+          options,
+        );
+      console.log(
+        `✅ Scheduled newsletter subscription email job: ${job?.attrs?._id}`,
+      );
+      return job;
+    } catch (error) {
+      console.error(
+        "❌ Error scheduling newsletter subscription email job:",
+        error,
+      );
+      throw error;
+    }
+  }
+
+  // Schedule one-off sign-up email (only when Sign Up email is enabled for channel)
+  async addSignUpEmailJob(data = {}, options = {}) {
+    try {
+      if (!this.initializedQueues.has("birthday")) {
+        await this.agendaQueues.birthday.initialize();
+        this.initializedQueues.add("birthday");
+      }
+      const job = await this.agendaQueues.birthday.addSignUpEmailJob(
+        data,
+        options,
+      );
+      console.log(`✅ Scheduled sign-up email job: ${job?.attrs?._id}`);
+      return job;
+    } catch (error) {
+      console.error("❌ Error scheduling sign-up email job:", error);
+      throw error;
+    }
+  }
+
+  // Schedule one-off tier upgrade email (when customer's tier is upgraded)
+  async addTierUpgradeEmailJob(data = {}, options = {}) {
+    try {
+      if (!this.initializedQueues.has("birthday")) {
+        await this.agendaQueues.birthday.initialize();
+        this.initializedQueues.add("birthday");
+      }
+      const job = await this.agendaQueues.birthday.addTierUpgradeEmailJob(
+        data,
+        options,
+      );
+      console.log(
+        `✅ Scheduled tier upgrade email job: ${job?.attrs?._id} for customer ${data.customerId} -> tier "${data.newTierName}"`,
+      );
+      return job;
+    } catch (error) {
+      console.error("❌ Error scheduling tier upgrade email job:", error);
+      throw error;
+    }
+  }
+
+  // Schedule one-off rejoining (welcome back) email (after rejoin points are awarded)
+  async addRejoiningEmailJob(data = {}, options = {}) {
+    try {
+      if (!this.initializedQueues.has("birthday")) {
+        await this.agendaQueues.birthday.initialize();
+        this.initializedQueues.add("birthday");
+      }
+      const job = await this.agendaQueues.birthday.addRejoiningEmailJob(
+        data,
+        options,
+      );
+      console.log(
+        `✅ Scheduled rejoining email job: ${job?.attrs?._id} for customer ${data.customerId}`,
+      );
+      return job;
+    } catch (error) {
+      console.error("❌ Error scheduling rejoining email job:", error);
+      throw error;
+    }
+  }
+
   // Add transaction expiration job
   async addTransactionExpirationJob(data = {}, options = {}) {
     try {
@@ -232,7 +419,7 @@ class QueueManager {
 
       const job = await this.agendaQueues.transactionExpiration.addJob(
         jobData,
-        options
+        options,
       );
       console.log(`✅ Added transaction expiration job: ${job.attrs._id}`);
       return job;
@@ -257,7 +444,7 @@ class QueueManager {
 
       const job = await this.agendaQueues.monthlyPoints.addJob(
         jobData,
-        options
+        options,
       );
       console.log(`✅ Added monthly points job: ${job.attrs._id}`);
       return job;
@@ -330,8 +517,8 @@ class QueueManager {
     if (!this.agendaQueues[jobType]) {
       throw new Error(
         `Unknown job type: ${jobType}. Available types: ${Object.keys(
-          this.agendaQueues
-        ).join(", ")}`
+          this.agendaQueues,
+        ).join(", ")}`,
       );
     }
 
@@ -418,7 +605,7 @@ class QueueManager {
         } catch (error) {
           console.error(`❌ Error shutting down ${queueName} queue:`, error);
         }
-      }
+      },
     );
 
     await Promise.all(shutdownPromises);

@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const queueManager = require("../queues/queueManager");
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -207,10 +208,14 @@ const savePoints = async (req, res, next) => {
           );
 
           let updatedCount = 0;
+          let emailsScheduled = 0;
 
           // Recalculate tier for each customer
           for (const customer of customers) {
             const customerPoints = customer.points || 0;
+            
+            // Capture PREVIOUS tier before recalculation
+            const previousTierIndex = customer.currentTier?.tierIndex ?? -1;
 
             // Find the appropriate tier based on customer's points
             let assignedTier = null;
@@ -246,11 +251,28 @@ const savePoints = async (req, res, next) => {
               };
               await customer.save();
               updatedCount++;
+              
+              // Check if this is an UPGRADE (not degradation) and schedule email
+              if (assignedTierIndex > previousTierIndex && savedPoint.tierStatus) {
+                try {
+                  const newTierName = assignedTier.tierName || `Tier ${assignedTierIndex + 1}`;
+                  await queueManager.addTierUpgradeEmailJob({
+                    customerId: customer._id.toString(),
+                    storeId: storeObjectId.toString(),
+                    channelId: channel._id.toString(),
+                    newTierName: newTierName,
+                    newTierIndex: assignedTierIndex,
+                  }, { delay: 'in 5 seconds' });
+                  emailsScheduled++;
+                } catch (emailErr) {
+                  console.warn(`⚠️ Failed to schedule tier upgrade email for ${customer._id}:`, emailErr.message);
+                }
+              }
             }
           }
 
           console.log(
-            `✅ Tier recalculation complete: ${updatedCount} customers updated`
+            `✅ Tier recalculation complete: ${updatedCount} customers updated, ${emailsScheduled} tier upgrade emails scheduled`
           );
         } catch (tierError) {
           // Log error but don't fail the points save
@@ -408,10 +430,14 @@ const updatePoints = async (req, res, next) => {
             );
 
             let updatedCount = 0;
+            let emailsScheduled = 0;
 
             // Recalculate tier for each customer
             for (const customer of customers) {
               const customerPoints = customer.points || 0;
+              
+              // Capture PREVIOUS tier before recalculation
+              const previousTierIndex = customer.currentTier?.tierIndex ?? -1;
 
               // Find the appropriate tier based on customer's points
               let assignedTier = null;
@@ -447,11 +473,28 @@ const updatePoints = async (req, res, next) => {
                 };
                 await customer.save();
                 updatedCount++;
+                
+                // Check if this is an UPGRADE (not degradation) and schedule email
+                if (assignedTierIndex > previousTierIndex && point.tierStatus) {
+                  try {
+                    const newTierName = assignedTier.tierName || `Tier ${assignedTierIndex + 1}`;
+                    await queueManager.addTierUpgradeEmailJob({
+                      customerId: customer._id.toString(),
+                      storeId: point.store_id.toString(),
+                      channelId: channel._id.toString(),
+                      newTierName: newTierName,
+                      newTierIndex: assignedTierIndex,
+                    }, { delay: 'in 5 seconds' });
+                    emailsScheduled++;
+                  } catch (emailErr) {
+                    console.warn(`⚠️ Failed to schedule tier upgrade email for ${customer._id}:`, emailErr.message);
+                  }
+                }
               }
             }
 
             console.log(
-              `✅ Tier recalculation complete: ${updatedCount} customers updated`
+              `✅ Tier recalculation complete: ${updatedCount} customers updated, ${emailsScheduled} tier upgrade emails scheduled`
             );
           }
         } catch (tierError) {

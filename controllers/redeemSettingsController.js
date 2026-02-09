@@ -83,22 +83,32 @@ const createRedeemCoupon = async (req, res, next) => {
       seletedCustDisable: req.body.seletedCustDisable !== false, // Default true (no restriction)
       seletedProductDisable: req.body.seletedProductDisable !== false, // Default true (no restriction)
       currentRestrictionType: req.body.currentRestrictionType || "product",
-      onlineStoreDashBoardDisable: req.body.onlineStoreDashBoardDisable !== false,
+      onlineStoreDashBoardDisable:
+        req.body.onlineStoreDashBoardDisable !== false,
       redemptionLimitDisable: req.body.redemptionLimitDisable !== false,
       redemptionLimit: parseFloat(req.body.redemptionLimit) || 0,
       minimumnPurchaseAmount: parseFloat(req.body.minimumnPurchaseAmount) || 0,
-      minimumnPurchaseAmountDisable: req.body.minimumnPurchaseAmountDisable !== false,
+      minimumnPurchaseAmountDisable:
+        req.body.minimumnPurchaseAmountDisable !== false,
     };
 
     // Validate pointValue and discountAmount for percentage discount
     if (couponData.redeemType === "purchase") {
-      if (!couponData.pointValue || couponData.pointValue < 1 || couponData.pointValue > 999999) {
+      if (
+        !couponData.pointValue ||
+        couponData.pointValue < 1 ||
+        couponData.pointValue > 999999
+      ) {
         return res.status(400).json({
           success: false,
           message: "Point value must be between 1 and 999,999",
         });
       }
-      if (!couponData.discountAmount || couponData.discountAmount < 1 || couponData.discountAmount > 100) {
+      if (
+        !couponData.discountAmount ||
+        couponData.discountAmount < 1 ||
+        couponData.discountAmount > 100
+      ) {
         return res.status(400).json({
           success: false,
           message: "Discount amount must be between 1 and 100",
@@ -108,7 +118,11 @@ const createRedeemCoupon = async (req, res, next) => {
 
     // Validate pointValue for fixed discount (storeCredit)
     if (couponData.redeemType === "storeCredit") {
-      if (!couponData.pointValue || couponData.pointValue < 1 || couponData.pointValue > 100000) {
+      if (
+        !couponData.pointValue ||
+        couponData.pointValue < 1 ||
+        couponData.pointValue > 100000
+      ) {
         return res.status(400).json({
           success: false,
           message: "Point value must be between 1 and 100,000",
@@ -116,10 +130,13 @@ const createRedeemCoupon = async (req, res, next) => {
       }
       // Fixed discount always has discountAmount of 1
       couponData.discountAmount = 1;
-      
+
       // Validate redemptionLimit if enabled
       if (!couponData.redemptionLimitDisable && couponData.redemptionLimit) {
-        if (couponData.redemptionLimit < 1 || couponData.redemptionLimit > 100000) {
+        if (
+          couponData.redemptionLimit < 1 ||
+          couponData.redemptionLimit > 100000
+        ) {
           return res.status(400).json({
             success: false,
             message: "Maximum points redeemable must be between 1 and 100,000",
@@ -130,25 +147,36 @@ const createRedeemCoupon = async (req, res, next) => {
 
     // Validate pointValue for free shipping
     if (couponData.redeemType === "freeShipping") {
-      if (!couponData.pointValue || couponData.pointValue < 1 || couponData.pointValue > 999999) {
+      if (
+        !couponData.pointValue ||
+        couponData.pointValue < 1 ||
+        couponData.pointValue > 999999
+      ) {
         return res.status(400).json({
           success: false,
           message: "Point value must be between 1 and 999,999",
         });
       }
-      
+
       // Validate minimumPurchaseAmount if enabled
-      if (!couponData.minimumnPurchaseAmountDisable && couponData.minimumnPurchaseAmount) {
-        if (couponData.minimumnPurchaseAmount < 0.01 || couponData.minimumnPurchaseAmount > 999999.99) {
+      if (
+        !couponData.minimumnPurchaseAmountDisable &&
+        couponData.minimumnPurchaseAmount
+      ) {
+        if (
+          couponData.minimumnPurchaseAmount < 0.01 ||
+          couponData.minimumnPurchaseAmount > 999999.99
+        ) {
           return res.status(400).json({
             success: false,
-            message: "Minimum purchase amount must be between 0.01 and 999,999.99",
+            message:
+              "Minimum purchase amount must be between 0.01 and 999,999.99",
           });
         }
       }
     }
 
-    // Validate free product
+    // Validate free product and set pointValue from product points for list/widget display
     if (couponData.redeemType === "freeProduct") {
       // Validate that at least one product is selected
       if (!couponData.selectedItems || couponData.selectedItems.length === 0) {
@@ -157,16 +185,28 @@ const createRedeemCoupon = async (req, res, next) => {
           message: "At least one product must be selected",
         });
       }
-      
+
       // Validate point required for each product
       for (const item of couponData.selectedItems) {
         const points = parseInt(item.pointRequired || "0");
-        if (!item.pointRequired || isNaN(points) || points < 1 || points > 999999) {
+        if (
+          !item.pointRequired ||
+          isNaN(points) ||
+          points < 1 ||
+          points > 999999
+        ) {
           return res.status(400).json({
             success: false,
             message: "All products must have valid points (1-999,999)",
           });
         }
+      }
+      // Use min of product points as coupon.value for Ways to Redeem list and widget
+      if (!couponData.pointValue || couponData.pointValue < 1) {
+        const points = couponData.selectedItems
+          .map((i) => parseInt(i.pointRequired || "0", 10))
+          .filter((n) => !isNaN(n) && n > 0);
+        if (points.length) couponData.pointValue = Math.min(...points);
       }
     }
 
@@ -199,12 +239,20 @@ const updateRedeemCoupon = async (req, res, next) => {
     // Prepare update data
     const updateData = {
       couponId: couponId,
-      store_id: req.body.storeId ? new mongoose.Types.ObjectId(req.body.storeId).toString() : undefined,
-      channel_id: req.body.channelId ? new mongoose.Types.ObjectId(req.body.channelId).toString() : undefined,
+      store_id: req.body.storeId
+        ? new mongoose.Types.ObjectId(req.body.storeId).toString()
+        : undefined,
+      channel_id: req.body.channelId
+        ? new mongoose.Types.ObjectId(req.body.channelId).toString()
+        : undefined,
       redeemType: req.body.redeemType,
       target_type: req.body.target_type,
-      pointValue: req.body.pointValue ? parseFloat(req.body.pointValue) : undefined,
-      discountAmount: req.body.discountAmount ? parseFloat(req.body.discountAmount) : undefined,
+      pointValue: req.body.pointValue
+        ? parseFloat(req.body.pointValue)
+        : undefined,
+      discountAmount: req.body.discountAmount
+        ? parseFloat(req.body.discountAmount)
+        : undefined,
       expire: req.body.expire !== undefined ? req.body.expire : undefined,
       selectedItems: req.body.selectedItems,
       selectedCollections: req.body.selectedCollections,
@@ -214,8 +262,13 @@ const updateRedeemCoupon = async (req, res, next) => {
       currentRestrictionType: req.body.currentRestrictionType,
       onlineStoreDashBoardDisable: req.body.onlineStoreDashBoardDisable,
       redemptionLimitDisable: req.body.redemptionLimitDisable,
-      redemptionLimit: req.body.redemptionLimit ? parseFloat(req.body.redemptionLimit) : undefined,
-      minimumnPurchaseAmount: req.body.minimumnPurchaseAmount ? parseFloat(req.body.minimumnPurchaseAmount) : undefined,
+      redemptionLimit: req.body.redemptionLimit
+        ? parseFloat(req.body.redemptionLimit)
+        : undefined,
+      minimumnPurchaseAmount:
+        req.body.minimumnPurchaseAmount !== undefined
+          ? parseFloat(req.body.minimumnPurchaseAmount) || 0
+          : undefined,
       minimumnPurchaseAmountDisable: req.body.minimumnPurchaseAmountDisable,
       couponActive: req.body.couponActive, // Add support for toggling active status
     };
@@ -253,8 +306,10 @@ const toggleCouponStatus = async (req, res, next) => {
     }
 
     // Find and update the coupon's active status
-    const coupon = await RedeemSettings.findById(new mongoose.Types.ObjectId(couponId));
-    
+    const coupon = await RedeemSettings.findById(
+      new mongoose.Types.ObjectId(couponId)
+    );
+
     if (!coupon) {
       return res.status(404).json({
         success: false,
@@ -266,7 +321,7 @@ const toggleCouponStatus = async (req, res, next) => {
     coupon.coupon.active = active;
     coupon.coupon.updatedAt = new Date();
     coupon.updatedAt = new Date();
-    
+
     await coupon.save();
 
     res.json({
@@ -321,4 +376,3 @@ module.exports = {
   toggleCouponStatus,
   deleteRedeemCoupon,
 };
-

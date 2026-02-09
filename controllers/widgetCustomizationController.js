@@ -2,6 +2,7 @@ const WidgetCustomization = require("../models/WidgetCustomization");
 const Store = require("../models/Store");
 const Channel = require("../models/Channel");
 const mongoose = require("mongoose");
+const { recreateScriptForChannel } = require("../services/bigcommerceScriptsService");
 
 // Get widget customization
 const getWidgetCustomization = async (req, res, next) => {
@@ -88,6 +89,11 @@ const createOrUpdateWidgetCustomization = async (req, res, next) => {
     // Use createOrUpdate method from the model
     const savedWidget = await WidgetCustomization.createOrUpdate(widgetData);
 
+    // Re-create storefront script so the loader URL gets latest placement (and other params)
+    if (channel.script_id) {
+      await recreateScriptForChannel(store, channel);
+    }
+
     res.json({
       success: true,
       message: "Widget customization saved successfully",
@@ -164,6 +170,13 @@ const updateWidgetCustomization = async (req, res, next) => {
         success: false,
         message: "Widget customization not found",
       });
+    }
+
+    // Re-create storefront script so the loader URL gets latest placement (and other params)
+    const store = await Store.findById(storeObjectId);
+    const channel = await Channel.findById(channelObjectId);
+    if (store && channel && channel.script_id) {
+      await recreateScriptForChannel(store, channel);
     }
 
     res.json({

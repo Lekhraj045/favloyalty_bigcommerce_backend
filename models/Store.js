@@ -106,6 +106,41 @@ storeSchema.statics.create = async function (storeData) {
       await existingStore.save();
 
       console.log("✅ Store updated");
+
+      // Check if store already has an active subscription, if not create one (for reinstalls)
+      try {
+        // Require models inside function to avoid circular dependency
+        const Plan = require("./Plan");
+        const Subscription = require("./Subscription");
+        
+        const existingSubscription = await Subscription.findActiveByStore(existingStore._id);
+        if (!existingSubscription) {
+          console.log("📋 No active subscription found for reinstalled store, creating free subscription...");
+          const freePlan = await Plan.findByName("free");
+          if (freePlan) {
+            const freeSubscription = new Subscription({
+              store_id: existingStore._id,
+              plan_id: freePlan._id,
+              status: "active",
+              orderCount: 0,
+              selectedOrderLimit: freePlan.orderLimit, // 300 for free plan
+              limitReached: false,
+              limitReachedAt: null,
+              basePrice: 0,
+              currentPrice: 0,
+            });
+            await freeSubscription.save();
+            console.log("✅ Free subscription created for reinstalled store:", existingStore._id);
+          } else {
+            console.warn("⚠️ Free plan not found, skipping subscription creation");
+          }
+        } else {
+          console.log("ℹ️ Store already has active subscription:", existingSubscription._id);
+        }
+      } catch (subError) {
+        console.error("⚠️ Error checking/creating subscription for reinstalled store:", subError.message);
+      }
+
       return existingStore._id.toString();
     } else {
       // Create new store
@@ -124,6 +159,36 @@ storeSchema.statics.create = async function (storeData) {
 
       await newStore.save();
       console.log("✅ Store created with ID:", newStore._id);
+
+      // Create a free subscription for this new store
+      try {
+        // Require models inside function to avoid circular dependency
+        const Plan = require("./Plan");
+        const Subscription = require("./Subscription");
+        
+        const freePlan = await Plan.findByName("free");
+        if (freePlan) {
+          const freeSubscription = new Subscription({
+            store_id: newStore._id,
+            plan_id: freePlan._id,
+            status: "active",
+            orderCount: 0,
+            selectedOrderLimit: freePlan.orderLimit, // 300 for free plan
+            limitReached: false,
+            limitReachedAt: null,
+            basePrice: 0,
+            currentPrice: 0,
+          });
+          await freeSubscription.save();
+          console.log("✅ Free subscription created for store:", newStore._id);
+        } else {
+          console.warn("⚠️ Free plan not found, skipping subscription creation");
+        }
+      } catch (subError) {
+        console.error("⚠️ Error creating free subscription:", subError.message);
+        // Don't fail store creation if subscription fails
+      }
+
       return newStore._id.toString();
     }
   } catch (error) {
@@ -259,6 +324,40 @@ storeSchema.statics.findWithChannels = async function (storeHash) {
     };
   } catch (error) {
     console.error("❌ Error finding store with channels:", error.message);
+    throw error;
+  }
+};
+
+storeSchema.statics.updatePlan = async function (storeId, planData) {
+  const { plan, trialDaysRemaining, paypalSubscriptionId } = planData;
+  
+  try {
+    const store = await this.findById(storeId);
+    if (!store) {
+      throw new Error(`Store not found with ID: ${storeId}`);
+    }
+
+    if (plan !== undefined) {
+      store.plan = plan;
+    }
+    if (trialDaysRemaining !== undefined) {
+      store.trialDaysRemaining = trialDaysRemaining;
+    }
+    if (paypalSubscriptionId !== undefined) {
+      store.paypalSubscriptionId = paypalSubscriptionId;
+    }
+
+    await store.save();
+    console.log("✅ Store plan updated:", {
+      storeId: store._id,
+      plan: store.plan,
+      trialDaysRemaining: store.trialDaysRemaining,
+      paypalSubscriptionId: store.paypalSubscriptionId
+    });
+    
+    return store;
+  } catch (error) {
+    console.error("❌ Error updating store plan:", error.message);
     throw error;
   }
 };

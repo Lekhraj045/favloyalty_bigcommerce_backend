@@ -1,5 +1,11 @@
 const Channel = require("../models/Channel");
+const Point = require("../models/Point");
+const CollectSettings = require("../models/CollectSettings");
+const RedeemSettings = require("../models/RedeemSettings");
+const WidgetCustomization = require("../models/WidgetCustomization");
 const mongoose = require("mongoose");
+const { syncChannelScript } = require("../services/bigcommerceScriptsService");
+const { cancelEventJobsForChannel } = require("../queues/eventQueue");
 
 // Get channels for a store
 const getChannels = async (req, res, next) => {
@@ -42,10 +48,16 @@ const getChannels = async (req, res, next) => {
         waysToEarnCompleted: channel.waysToEarnCompleted || false,
         waysToRedeemCompleted: channel.waysToRedeemCompleted || false,
         customiseWidgetCompleted: channel.customiseWidgetCompleted || false,
+        widget_visibility:
+          typeof channel.widget_visibility === "boolean"
+            ? channel.widget_visibility
+            : true,
+        script_id: channel.script_id ?? null,
+        default_currency: channel.default_currency ?? null,
       }));
 
     console.log(
-      `📋 Returning ${formattedChannels.length} active channels (filtered from ${channels.length} total)`
+      `📋 Returning ${formattedChannels.length} active channels (filtered from ${channels.length} total)`,
     );
 
     res.json(formattedChannels);
@@ -98,15 +110,30 @@ const updateSetupProgress = async (req, res, next) => {
 
     // Count how many are true
     const calculatedProgress = completionFields.filter(
-      (field) => field === true
+      (field) => field === true,
     ).length;
 
-    // Update the channel with calculated progress
+    // Determine widget visibility based on progress
+    // Whenever setupprogress changes, default widget_visibility to false
+    // and only set it to true when progress reaches 4
+    const widgetVisibility = calculatedProgress === 4;
+
+    // Update the channel with calculated progress and widget visibility
     const updatedChannel = await Channel.findByIdAndUpdate(
       channelObjectId.toString(),
-      { $set: { setupprogress: calculatedProgress } },
-      { new: true }
+      {
+        $set: {
+          setupprogress: calculatedProgress,
+          widget_visibility: widgetVisibility,
+        },
+      },
+      { new: true },
     );
+
+    // Sync BigCommerce script: create when setupprogress 4 & widget_visibility true, else delete
+    if (req.store) {
+      await syncChannelScript(req.store, updatedChannel);
+    }
 
     res.json({
       success: true,
@@ -204,7 +231,7 @@ const updatePageCompletionStatus = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: `Invalid page type. Must be one of: ${validPageTypes.join(
-          ", "
+          ", ",
         )}`,
       });
     }
@@ -263,21 +290,28 @@ const updatePageCompletionStatus = async (req, res, next) => {
 
     // Count how many are true
     const completedCount = Object.values(completionFields).filter(
-      (field) => field === true
+      (field) => field === true,
     ).length;
 
-    // Update setupprogress (0-4)
+    // Update setupprogress (0-4) and widget visibility
     const updateData = {
       [fieldName]: completedValue,
       setupprogress: completedCount,
+      // For any change, widget_visibility should be false unless setupprogress is 4
+      widget_visibility: completedCount === 4,
     };
 
     // Update the channel
     const updatedChannel = await Channel.findByIdAndUpdate(
       channelObjectId.toString(),
       { $set: updateData },
-      { new: true }
+      { new: true },
     );
+
+    // Sync BigCommerce script: create when setupprogress 4 & widget_visibility true, else delete
+    if (req.store) {
+      await syncChannelScript(req.store, updatedChannel);
+    }
 
     res.json({
       success: true,
@@ -294,9 +328,221 @@ const updatePageCompletionStatus = async (req, res, next) => {
   }
 };
 
+// Default Point (Points & Tier System) settings - same as post-installation
+const DEFAULT_POINT_SETTINGS = {
+  pointName: "Points",
+  customPointName: [],
+  expiry: false,
+  expiriesInDays: null,
+  tierStatus: false,
+  logo: { id: 1, src: "point-icon1.svg", name: "point-icon1.svg" },
+  customLogo: null,
+  tier: [
+    { tierName: "Silver", pointRequired: 0, multiplier: 1, badgeColor: null },
+    { tierName: "Gold", pointRequired: 1000, multiplier: 1.2, badgeColor: null },
+    {
+      tierName: "Platinum",
+      pointRequired: 5000,
+      multiplier: 1.5,
+      badgeColor: null,
+    },
+  ],
+};
+
+// Default CollectSettings (Ways to Earn) - all disabled, no events
+const DEFAULT_COLLECT_SETTINGS = {
+  basic: {
+    signup: { active: false, point: 0 },
+    spent: { active: false, point: 0 },
+    birthday: { active: false, point: 0 },
+    subucribing: { active: false, point: 0 },
+    profileComplition: { active: false, point: 0 },
+  },
+  event: { events: [], active: false },
+  referAndEarn: { active: false, point: 0 },
+  socialMedia: { active: false },
+  goal: { active: false },
+  rejoin: { active: false, dayOfRecall: 0, pointRejoin: 0 },
+  emailSetting: {},
+  active: false,
+  point: 0,
+};
+
+// Default announcement - basic/default image only
+const DEFAULT_ANNOUNCEMENT = {
+  enable: true,
+  image: "default_announcement.jpg",
+  link: null,
+};
+
+// Default WidgetCustomization (Design/Customize Widget) - post-installation state
+const DEFAULT_WIDGET_CUSTOMIZATION = {
+  widgetBgColor: "#62a63f",
+  headingColor: "#ffffff",
+  widgetIconColor: null,
+  widgetIconUrlId: null,
+  LauncherType: "IconOnly",
+  Label: null,
+  backgroundPatternEnabled: false,
+  backgroundPatternUrlId: null,
+  widgetButton: "Bottom-Left",
+  displayOption: [],
+  announcements: [DEFAULT_ANNOUNCEMENT],
+};
+
+/**
+ * Reset all 4 setup pages for a channel to default (post-installation) state.
+ * Resets: Points & Tier System, Ways to Earn, Ways to Redeem, Customize Widget.
+ * Sets channel completion fields to false and setupprogress to 0.
+ */
+const resetChannelSettings = async (req, res, next) => {
+  try {
+    const { channelId } = req.body;
+
+    if (!channelId) {
+      return res.status(400).json({
+        success: false,
+        message: "Channel ID is required",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(channelId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Channel ID format",
+      });
+    }
+
+    const channelObjectId = new mongoose.Types.ObjectId(channelId);
+    const storeId = req.store?._id;
+
+    if (!storeId) {
+      return res.status(401).json({
+        success: false,
+        message: "Store context is required",
+      });
+    }
+
+    const storeObjectId =
+      typeof storeId === "string" ? new mongoose.Types.ObjectId(storeId) : storeId;
+
+    const channel = await Channel.findOne({
+      _id: channelObjectId,
+      store_id: storeObjectId,
+    });
+
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        message: "Channel not found or does not belong to this store",
+      });
+    }
+
+    // 1) Cancel scheduled event jobs for this channel before clearing events
+    await cancelEventJobsForChannel(channelId);
+
+    // 2) Reset Points (Points & Tier System)
+    await Point.findOneAndUpdate(
+      { store_id: storeObjectId, channel_id: channelObjectId },
+      {
+        $set: {
+          ...DEFAULT_POINT_SETTINGS,
+          metaData: { createdAt: new Date() },
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    // 3) Reset CollectSettings (Ways to Earn) - clear events, reset basic/refer/etc to defaults
+    await CollectSettings.findOneAndUpdate(
+      { store_id: storeObjectId, channel_id: channelObjectId },
+      {
+        $set: {
+          ...DEFAULT_COLLECT_SETTINGS,
+          metaData: { createdAt: new Date(), updatedAt: new Date() },
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    // 4) Delete all RedeemSettings (coupon creation methods) for this channel
+    await RedeemSettings.deleteMany({
+      store_id: storeObjectId,
+      channel_id: channelObjectId,
+    });
+
+    // 5) Reset WidgetCustomization - full Design settings to basic (announcements, background pattern, placement, etc.)
+    const existingWidget = await WidgetCustomization.findOne({
+      store_id: storeObjectId,
+      channel_id: channelObjectId,
+    });
+
+    const widgetResetData = {
+      ...DEFAULT_WIDGET_CUSTOMIZATION,
+      metaData: {
+        createdAt: existingWidget?.metaData?.createdAt || new Date(),
+        updatedAt: new Date(),
+      },
+    };
+
+    if (existingWidget) {
+      await WidgetCustomization.findOneAndUpdate(
+        { store_id: storeObjectId, channel_id: channelObjectId },
+        { $set: widgetResetData },
+        { new: true }
+      );
+    } else {
+      await WidgetCustomization.createOrUpdate({
+        store_id: storeObjectId.toString(),
+        channel_id: channelId,
+        ...DEFAULT_WIDGET_CUSTOMIZATION,
+      });
+    }
+
+    // 6) Update Channel - setupprogress 0, all completion fields false, widget_visibility false
+    const updatedChannel = await Channel.findByIdAndUpdate(
+      channelObjectId.toString(),
+      {
+        $set: {
+          setupprogress: 0,
+          pointsTierSystemCompleted: false,
+          waysToEarnCompleted: false,
+          waysToRedeemCompleted: false,
+          customiseWidgetCompleted: false,
+          widget_visibility: false,
+        },
+      },
+      { new: true }
+    );
+
+    // 7) Sync BigCommerce script (remove widget script since setup incomplete)
+    if (req.store) {
+      await syncChannelScript(req.store, updatedChannel);
+    }
+
+    res.json({
+      success: true,
+      message: "Channel settings reset successfully",
+      data: {
+        channelId: updatedChannel._id.toString(),
+        setupprogress: 0,
+        pointsTierSystemCompleted: false,
+        waysToEarnCompleted: false,
+        waysToRedeemCompleted: false,
+        customiseWidgetCompleted: false,
+        widget_visibility: false,
+      },
+    });
+  } catch (error) {
+    console.error("Error resetting channel settings:", error);
+    next(error);
+  }
+};
+
 module.exports = {
   getChannels,
   updateSetupProgress,
   getSetupProgress,
   updatePageCompletionStatus,
+  resetChannelSettings,
 };

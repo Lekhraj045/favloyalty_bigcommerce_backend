@@ -3,7 +3,9 @@ const Customer = require("../models/Customer");
 const Store = require("../models/Store");
 const Channel = require("../models/Channel");
 const Point = require("../models/Point");
+const RedeemSettings = require("../models/RedeemSettings");
 const mongoose = require("mongoose");
+const queueManager = require("../queues/queueManager");
 
 /**
  * Get all transactions with filters
@@ -298,6 +300,9 @@ const createTransaction = async (req, res, next) => {
           const updatedCustomer = await Customer.findById(customerId);
           if (updatedCustomer) {
             const customerPoints = updatedCustomer.points || 0;
+            
+            // Capture PREVIOUS tier before recalculation
+            const previousTierIndex = updatedCustomer.currentTier?.tierIndex ?? -1;
 
             // Sort tiers by pointRequired in ascending order
             const sortedTiers = [...point.tier].sort(
@@ -349,6 +354,25 @@ const createTransaction = async (req, res, next) => {
                 console.log(
                   `✅ Customer tier updated: ${updatedCustomer.email} -> Tier ${assignedTierIndex} (${assignedTier.tierName})`
                 );
+                
+                // Check if this is an UPGRADE (not degradation) and schedule email
+                if (assignedTierIndex > previousTierIndex && point.tierStatus) {
+                  try {
+                    const newTierName = assignedTier.tierName || `Tier ${assignedTierIndex + 1}`;
+                    await queueManager.addTierUpgradeEmailJob({
+                      customerId: updatedCustomer._id.toString(),
+                      storeId: storeId.toString(),
+                      channelId: channel._id.toString(),
+                      newTierName: newTierName,
+                      newTierIndex: assignedTierIndex,
+                    }, { delay: 'in 5 seconds' });
+                    console.log(
+                      `📧 Tier upgrade email scheduled for customer ${updatedCustomer._id} -> "${newTierName}"`
+                    );
+                  } catch (emailErr) {
+                    console.warn(`⚠️ Failed to schedule tier upgrade email for ${updatedCustomer._id}:`, emailErr.message);
+                  }
+                }
               }
             }
           }
@@ -692,7 +716,34 @@ const getPointsAwardedStats = async (req, res, next) => {
       });
     }
 
-    // Transaction names to match
+    const storeObjectId = new mongoose.Types.ObjectId(storeId);
+
+    // Resolve numeric channel_id: API may receive either numeric BC channel_id or Channel MongoDB _id
+    let numericChannelId;
+    if (mongoose.Types.ObjectId.isValid(channelId) && String(channelId).length === 24) {
+      const Channel = require("../models/Channel");
+      const channel = await Channel.findOne({
+        _id: channelId,
+        store_id: storeObjectId,
+      });
+      if (!channel) {
+        return res.status(404).json({
+          success: false,
+          message: "Channel not found",
+        });
+      }
+      numericChannelId = channel.channel_id;
+    } else {
+      numericChannelId = parseInt(channelId, 10);
+      if (isNaN(numericChannelId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid channelId format",
+        });
+      }
+    }
+
+    // Display names for dashboard (must match frontend labels)
     const transactionNames = [
       "Sign Up Bonus",
       "Referral",
@@ -703,9 +754,6 @@ const getPointsAwardedStats = async (req, res, next) => {
       "Event Celebration",
       "Rejoin Bonus",
     ];
-
-    const storeObjectId = new mongoose.Types.ObjectId(storeId);
-    const numericChannelId = parseInt(channelId);
     const startDateCurrent = new Date(startDate);
     const endDateCurrent = new Date(endDate);
     endDateCurrent.setHours(23, 59, 59, 999); // Set to end of day
@@ -715,39 +763,112 @@ const getPointsAwardedStats = async (req, res, next) => {
     const endDatePrevious = new Date(startDateCurrent.getTime() - 1);
     const startDatePrevious = new Date(endDatePrevious.getTime() - periodDuration);
 
+    // Map transactionCategory + description to display name
+    // - transactionCategory "order" -> Purchase Product (webhook)
+    // - transactionCategory "signup" -> Sign Up Bonus (webhook: "Sign up bonus")
+    // - transactionCategory "referral" -> Referral (webhook: "Referral bonus...")
+    // - transactionCategory "other" + description -> map by description
+    const addDisplayName = {
+      $addFields: {
+        displayName: {
+          $switch: {
+            branches: [
+              {
+                case: { $eq: ["$transactionCategory", "order"] },
+                then: "Purchase Product",
+              },
+              {
+                case: { $eq: ["$transactionCategory", "signup"] },
+                then: "Sign Up Bonus",
+              },
+              {
+                case: { $eq: ["$transactionCategory", "referral"] },
+                then: "Referral",
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: ["$transactionCategory", "other"] },
+                    { $eq: ["$description", "Birthday Celebration"] },
+                  ],
+                },
+                then: "Birthday Celebration",
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: ["$transactionCategory", "other"] },
+                    { $eq: ["$description", "Profile Completion"] },
+                  ],
+                },
+                then: "Profile Completion",
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: ["$transactionCategory", "other"] },
+                    { $eq: ["$description", "Newsletter Subscription"] },
+                  ],
+                },
+                then: "Newsletter Bonus",
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: ["$transactionCategory", "other"] },
+                    {
+                      $regexMatch: {
+                        input: "$description",
+                        regex: "^Event: ",
+                      },
+                    },
+                  ],
+                },
+                then: "Event Celebration",
+              },
+              {
+                case: {
+                  $and: [
+                    { $eq: ["$transactionCategory", "other"] },
+                    {
+                      $regexMatch: {
+                        input: { $toLower: "$description" },
+                        regex: "rejoin",
+                      },
+                    },
+                  ],
+                },
+                then: "Rejoin Bonus",
+              },
+            ],
+            default: null,
+          },
+        },
+      },
+    };
+    const matchDisplayNameExists = { $match: { displayName: { $ne: null } } };
+
     // Aggregate current period transactions
+    // Include type "earn" (purchase, birthday, profile, newsletter, event), "signup", and "referral" - all are points awarded to customers
     const currentPeriodResult = await Transaction.aggregate([
       {
         $match: {
           store_id: storeObjectId,
           channel_id: numericChannelId,
-          type: "earn", // Only earned points
+          type: { $in: ["earn", "signup", "referral"] },
           status: "completed",
-          $or: [
-            { description: { $in: transactionNames } },
-            { description: { $regex: /^Event: / } }, // Match "Event: *" patterns
-          ],
+          points: { $gt: 0 },
           createdAt: {
             $gte: startDateCurrent,
             $lte: endDateCurrent,
           },
         },
       },
-      {
-        $addFields: {
-          // Normalize event descriptions to "Event Celebration"
-          normalizedDescription: {
-            $cond: {
-              if: { $regexMatch: { input: "$description", regex: /^Event: / } },
-              then: "Event Celebration",
-              else: "$description",
-            },
-          },
-        },
-      },
+      addDisplayName,
+      matchDisplayNameExists,
       {
         $group: {
-          _id: "$normalizedDescription",
+          _id: "$displayName",
           totalPointsCurrent: { $sum: "$points" },
         },
       },
@@ -759,33 +880,20 @@ const getPointsAwardedStats = async (req, res, next) => {
         $match: {
           store_id: storeObjectId,
           channel_id: numericChannelId,
-          type: "earn", // Only earned points
+          type: { $in: ["earn", "signup", "referral"] },
           status: "completed",
-          $or: [
-            { description: { $in: transactionNames } },
-            { description: { $regex: /^Event: / } }, // Match "Event: *" patterns
-          ],
+          points: { $gt: 0 },
           createdAt: {
             $gte: startDatePrevious,
             $lte: endDatePrevious,
           },
         },
       },
-      {
-        $addFields: {
-          // Normalize event descriptions to "Event Celebration"
-          normalizedDescription: {
-            $cond: {
-              if: { $regexMatch: { input: "$description", regex: /^Event: / } },
-              then: "Event Celebration",
-              else: "$description",
-            },
-          },
-        },
-      },
+      addDisplayName,
+      matchDisplayNameExists,
       {
         $group: {
-          _id: "$normalizedDescription",
+          _id: "$displayName",
           totalPointsPrevious: { $sum: "$points" },
         },
       },
@@ -842,6 +950,214 @@ const getPointsAwardedStats = async (req, res, next) => {
   }
 };
 
+/**
+ * Get points redeemed statistics for dashboard (by channel and date range)
+ */
+const getPointsRedeemedStats = async (req, res, next) => {
+  try {
+    const { storeId, channelId, startDate, endDate } = req.query;
+
+    if (!storeId) {
+      return res.status(400).json({
+        success: false,
+        message: "storeId is required",
+      });
+    }
+    if (!channelId) {
+      return res.status(400).json({
+        success: false,
+        message: "channelId is required",
+      });
+    }
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "startDate and endDate are required",
+      });
+    }
+
+    const storeObjectId = new mongoose.Types.ObjectId(storeId);
+
+    let numericChannelId;
+    if (
+      mongoose.Types.ObjectId.isValid(channelId) &&
+      String(channelId).length === 24
+    ) {
+      const channel = await Channel.findOne({
+        _id: channelId,
+        store_id: storeObjectId,
+      });
+      if (!channel) {
+        return res.status(404).json({
+          success: false,
+          message: "Channel not found",
+        });
+      }
+      numericChannelId = channel.channel_id;
+    } else {
+      numericChannelId = parseInt(channelId, 10);
+      if (isNaN(numericChannelId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid channelId format",
+        });
+      }
+    }
+
+    const startDateCurrent = new Date(startDate);
+    const endDateCurrent = new Date(endDate);
+    endDateCurrent.setHours(23, 59, 59, 999);
+
+    // Previous period (same duration before start date)
+    const periodDuration = endDateCurrent.getTime() - startDateCurrent.getTime();
+    const endDatePrevious = new Date(startDateCurrent.getTime() - 1);
+    const startDatePrevious = new Date(
+      endDatePrevious.getTime() - periodDuration
+    );
+
+    const buildPipeline = (startD, endD) => [
+      {
+        $match: {
+          store_id: storeObjectId,
+          channel_id: numericChannelId,
+          type: "redeem",
+          status: "completed",
+          points: { $lt: 0 },
+          createdAt: {
+            $gte: startD,
+            $lte: endD,
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: "redeem-settings",
+          let: { redeemSettingIdStr: "$metadata.redeemSettingId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: [
+                    "$_id",
+                    { $toObjectId: { $ifNull: ["$$redeemSettingIdStr", "000000000000000000000000"] } },
+                  ],
+                },
+              },
+            },
+            { $project: { redeemType: 1 } },
+          ],
+          as: "redeemSettingDoc",
+        },
+      },
+      {
+        $unwind: {
+          path: "$redeemSettingDoc",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $addFields: {
+          redeemType: "$redeemSettingDoc.redeemType",
+        },
+      },
+      {
+        $addFields: {
+          displayName: {
+            $switch: {
+              branches: [
+                {
+                  case: { $eq: ["$redeemType", "purchase"] },
+                  then: "Percentage Discount",
+                },
+                {
+                  case: { $eq: ["$redeemType", "storeCredit"] },
+                  then: "Fixed Discount",
+                },
+                {
+                  case: { $eq: ["$redeemType", "freeShipping"] },
+                  then: "Free Shipping",
+                },
+                {
+                  case: { $eq: ["$redeemType", "freeProduct"] },
+                  then: "Free Product",
+                },
+                {
+                  case: { $eq: ["$redeemType", "orderPoint"] },
+                  then: "Order Points",
+                },
+              ],
+              default: "Other",
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$displayName",
+          totalPointsRedeemed: { $sum: { $abs: "$points" } },
+        },
+      },
+    ];
+
+    const [currentResult, previousResult] = await Promise.all([
+      Transaction.aggregate(buildPipeline(startDateCurrent, endDateCurrent)),
+      Transaction.aggregate(buildPipeline(startDatePrevious, endDatePrevious)),
+    ]);
+
+    const currentMap = {};
+    currentResult.forEach((item) => {
+      currentMap[item._id] = item.totalPointsRedeemed;
+    });
+    const previousMap = {};
+    previousResult.forEach((item) => {
+      previousMap[item._id] = item.totalPointsRedeemed;
+    });
+
+    const stats = [
+      "Percentage Discount",
+      "Fixed Discount",
+      "Free Shipping",
+      "Free Product",
+    ].map((transactionName) => {
+      const totalPointsRedeemedCurrent = currentMap[transactionName] || 0;
+      const totalPointsRedeemedPrevious = previousMap[transactionName] || 0;
+
+      let growth = 0;
+      if (totalPointsRedeemedPrevious > 0) {
+        growth =
+          ((totalPointsRedeemedCurrent - totalPointsRedeemedPrevious) /
+            totalPointsRedeemedPrevious) *
+          100;
+      } else if (totalPointsRedeemedCurrent > 0) {
+        growth = 100;
+      }
+
+      return {
+        transactionName,
+        totalPointsRedeemed: totalPointsRedeemedCurrent,
+        totalPointsRedeemedPrevious,
+        growth: Math.round(growth * 100) / 100,
+      };
+    });
+
+    const totalPointsRedeemed = stats.reduce(
+      (sum, s) => sum + s.totalPointsRedeemed,
+      0
+    );
+
+    res.json({
+      success: true,
+      data: {
+        totalPointsRedeemed,
+        stats,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error getting points redeemed stats:", error);
+    next(error);
+  }
+};
+
 module.exports = {
   getTransactions,
   getTransactionById,
@@ -849,4 +1165,5 @@ module.exports = {
   getCustomerTransactions,
   bulkImportPoints,
   getPointsAwardedStats,
+  getPointsRedeemedStats,
 };
