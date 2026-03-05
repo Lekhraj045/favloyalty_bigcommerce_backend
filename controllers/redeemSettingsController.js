@@ -2,6 +2,7 @@ const RedeemSettings = require("../models/RedeemSettings");
 const Store = require("../models/Store");
 const Channel = require("../models/Channel");
 const mongoose = require("mongoose");
+const { getStorefrontBase } = require("./productsController");
 
 // Get redeem settings
 const getRedeemSettings = async (req, res, next) => {
@@ -27,7 +28,36 @@ const getRedeemSettings = async (req, res, next) => {
       return res.status(200).json([]);
     }
 
-    res.json(settings);
+    // Get channel-specific storefront base URL for enriching relative product links
+    const store = await Store.findById(storeObjectId);
+    const channel = await Channel.findById(channelObjectId);
+    const storefrontBase =
+      store ? await getStorefrontBase(store, channel) : "";
+
+    // Enrich any relative itemUrl / collectionUrl with the full storefront URL
+    const enrichedSettings = settings.map((setting) => {
+      const obj = setting.toObject ? setting.toObject() : { ...setting };
+      const items = obj.coupon?.restriction?.selectedItems?.items;
+      if (items?.length && storefrontBase) {
+        items.forEach((item) => {
+          if (item.itemUrl && item.itemUrl.startsWith("/")) {
+            item.itemUrl = `${storefrontBase}${item.itemUrl}`;
+          }
+        });
+      }
+      const collections =
+        obj.coupon?.restriction?.selectedCollections?.collections;
+      if (collections?.length && storefrontBase) {
+        collections.forEach((col) => {
+          if (col.collectionUrl && col.collectionUrl.startsWith("/")) {
+            col.collectionUrl = `${storefrontBase}${col.collectionUrl}`;
+          }
+        });
+      }
+      return obj;
+    });
+
+    res.json(enrichedSettings);
   } catch (error) {
     console.error("Error getting redeem settings:", error);
     next(error);

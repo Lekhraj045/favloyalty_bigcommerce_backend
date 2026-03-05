@@ -8,7 +8,10 @@ const {
   seedEmailTemplatesForChannel,
   seedEmailTemplatesForChannels,
 } = require("../helpers/emailTemplateSeeder");
-const { getRelativeImagePath, getAbsoluteImageUrl } = require("../helpers/imageUrlHelper");
+const {
+  getRelativeImagePath,
+  getAbsoluteImageUrl,
+} = require("../helpers/imageUrlHelper");
 
 // Configure multer for banner image uploads
 const storage = multer.diskStorage({
@@ -29,7 +32,7 @@ const uploadBanner = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: function (req, file, cb) {
-    const validTypes = ['image/gif', 'image/jpeg', 'image/jpg', 'image/png'];
+    const validTypes = ["image/gif", "image/jpeg", "image/jpg", "image/png"];
     if (validTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
@@ -67,7 +70,7 @@ const getEmailTemplates = async (req, res, next) => {
     // If no templates exist, seed them automatically
     if (!templates || templates.length === 0) {
       console.log(
-        `🌱 No templates found for channel ${channelId}, seeding default templates...`
+        `🌱 No templates found for channel ${channelId}, seeding default templates...`,
       );
       try {
         await seedEmailTemplatesForChannel(channelObjectId);
@@ -80,7 +83,7 @@ const getEmailTemplates = async (req, res, next) => {
     }
 
     // Convert relative image URLs to absolute URLs for frontend display
-    const templatesWithAbsoluteUrls = (templates || []).map(template => {
+    const templatesWithAbsoluteUrls = (templates || []).map((template) => {
       const templateObj = template.toObject ? template.toObject() : template;
       if (templateObj.imageUrl) {
         templateObj.imageUrl = getAbsoluteImageUrl(templateObj.imageUrl);
@@ -125,20 +128,20 @@ const getEmailTemplateByType = async (req, res, next) => {
     // Get template
     let template = await EmailTemplate.findByChannelAndType(
       channelObjectId,
-      templateType
+      templateType,
     );
 
     // If template doesn't exist, seed templates and try again
     if (!template) {
       console.log(
-        `🌱 Template ${templateType} not found for channel ${channelId}, seeding default templates...`
+        `🌱 Template ${templateType} not found for channel ${channelId}, seeding default templates...`,
       );
       try {
         await seedEmailTemplatesForChannel(channelObjectId);
         // Fetch template again after seeding
         template = await EmailTemplate.findByChannelAndType(
           channelObjectId,
-          templateType
+          templateType,
         );
       } catch (seedError) {
         console.error("❌ Error auto-seeding templates:", seedError.message);
@@ -242,7 +245,7 @@ const seedTemplatesForStore = async (req, res, next) => {
       } catch (error) {
         console.error(
           `❌ Error seeding templates for channel ${channelId}:`,
-          error.message
+          error.message,
         );
         // Continue with other channels
       }
@@ -349,13 +352,17 @@ const updateEmailTemplate = async (req, res, next) => {
 
       const updatedTemplate = await EmailTemplate.createOrUpdate(
         channelObjectId,
-        templateData
+        templateData,
       );
 
       // Convert relative image URL to absolute URL for frontend response
-      const responseTemplate = updatedTemplate.toObject ? updatedTemplate.toObject() : updatedTemplate;
+      const responseTemplate = updatedTemplate.toObject
+        ? updatedTemplate.toObject()
+        : updatedTemplate;
       if (responseTemplate.imageUrl) {
-        responseTemplate.imageUrl = getAbsoluteImageUrl(responseTemplate.imageUrl);
+        responseTemplate.imageUrl = getAbsoluteImageUrl(
+          responseTemplate.imageUrl,
+        );
       }
 
       res.json({

@@ -119,14 +119,15 @@ const fetchChannelList = async (
       default_currency: currencyAssignmentsMap[ch.id] || null,
     }));
 
-    // Filter for active channels only if requested (during installation)
+    // Filter for active BigCommerce-platform channels only if requested (during installation)
     if (filterActiveOnly) {
       const allChannelsCount = channelsFromBigCommerce.length;
       channelsFromBigCommerce = channelsFromBigCommerce.filter(
-        (channel) => channel.status === "active",
+        (channel) =>
+          channel.status === "active" && channel.platform === "bigcommerce",
       );
       console.log(
-        `🔍 Filtered channels: ${allChannelsCount} total, ${channelsFromBigCommerce.length} active`,
+        `🔍 Filtered channels: ${allChannelsCount} total, ${channelsFromBigCommerce.length} active bigcommerce-platform`,
       );
     }
 
@@ -174,22 +175,24 @@ const fetchChannelList = async (
         // Fetch database channels after sync
         databaseChannels = await Channel.findByStoreId(storeId);
 
-        // If filtering for active channels only, remove any inactive channels from database
+        // If filtering for active channels only, remove any inactive or non-bigcommerce channels from database
         if (
           filterActiveOnly &&
           databaseChannels &&
           databaseChannels.length > 0
         ) {
-          const inactiveChannels = databaseChannels.filter(
-            (channel) => channel.status !== "active",
+          const excludedChannels = databaseChannels.filter(
+            (channel) =>
+              channel.status !== "active" ||
+              channel.platform !== "bigcommerce",
           );
 
-          if (inactiveChannels.length > 0) {
+          if (excludedChannels.length > 0) {
             console.log(
-              `🗑️ Removing ${inactiveChannels.length} inactive channels from database`,
+              `🗑️ Removing ${excludedChannels.length} inactive/non-bigcommerce channels from database`,
             );
 
-            const inactiveChannelIds = inactiveChannels.map((ch) => ch._id);
+            const excludedChannelIds = excludedChannels.map((ch) => ch._id);
             const storeObjectId =
               typeof storeId === "string"
                 ? new mongoose.Types.ObjectId(storeId)
@@ -197,10 +200,12 @@ const fetchChannelList = async (
 
             await Channel.deleteMany({
               store_id: storeObjectId,
-              _id: { $in: inactiveChannelIds },
+              _id: { $in: excludedChannelIds },
             });
 
-            console.log("✅ Inactive channels removed successfully");
+            console.log(
+              "✅ Inactive/non-bigcommerce channels removed successfully",
+            );
 
             // Fetch updated channel list after removal
             databaseChannels = await Channel.findByStoreId(storeId);
@@ -249,10 +254,14 @@ const fetchChannelList = async (
 
     // Return database channels if available, otherwise return BigCommerce channels
     // Format database channels to include MongoDB _id and BigCommerce channel_id
-    // Filter to only return active channels for UI display
+    // Filter to only return active BigCommerce-platform channels for UI display
     if (databaseChannels && databaseChannels.length > 0) {
       const formattedChannels = databaseChannels
-        .filter((channel) => channel.status === "active")
+        .filter(
+          (channel) =>
+            channel.status === "active" &&
+            channel.platform === "bigcommerce",
+        )
         .map((channel) => ({
           id: channel._id.toString(),
           channel_id: channel.channel_id,
@@ -281,9 +290,12 @@ const fetchChannelList = async (
     }
 
     // Fallback to BigCommerce channels if database channels are not available
-    // Filter to only return active channels
+    // Filter to only return active BigCommerce-platform channels
     const formattedChannels = channelsFromBigCommerce
-      .filter((channel) => channel.status === "active")
+      .filter(
+        (channel) =>
+          channel.status === "active" && channel.platform === "bigcommerce",
+      )
       .map((channel) => ({
         id: null, // No database ID available
         channel_id: channel.id,

@@ -64,6 +64,11 @@ const channelSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Cached storefront site URL for this channel (e.g. https://store-xxx.catalyst-sandbox-vercel.store)
+    site_url: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

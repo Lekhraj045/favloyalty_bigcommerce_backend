@@ -147,7 +147,7 @@ const saveCollectSettings = async (req, res, next) => {
     const savedSettings = await CollectSettings.createOrUpdate(
       storeObjectId,
       channelObjectId,
-      settingsData
+      settingsData,
     );
 
     // Process events if they were updated
@@ -155,7 +155,10 @@ const saveCollectSettings = async (req, res, next) => {
     if (event && savedSettings.event?.events) {
       try {
         // Ensure event.active is set to true if there are events
-        if (savedSettings.event.events.length > 0 && !savedSettings.event.active) {
+        if (
+          savedSettings.event.events.length > 0 &&
+          !savedSettings.event.active
+        ) {
           savedSettings.event.active = true;
           await savedSettings.save();
           console.log("✅ Set event.active to true for saved events");
@@ -165,7 +168,7 @@ const saveCollectSettings = async (req, res, next) => {
         const todayDateOnly = new Date(
           today.getFullYear(),
           today.getMonth(),
-          today.getDate()
+          today.getDate(),
         );
 
         let hasTodayEvents = false;
@@ -179,7 +182,7 @@ const saveCollectSettings = async (req, res, next) => {
           const eventDateOnly = new Date(
             eventDate.getFullYear(),
             eventDate.getMonth(),
-            eventDate.getDate()
+            eventDate.getDate(),
           );
 
           // If event is for today, process it immediately
@@ -190,7 +193,7 @@ const saveCollectSettings = async (req, res, next) => {
             hasTodayEvents = true;
             todayEvents.push(eventItem);
             console.log(
-              `🚀 Event "${eventItem.name}" is for today - will process immediately`
+              `🚀 Event "${eventItem.name}" is for today - will process immediately`,
             );
           }
           // If event is for future date, schedule it
@@ -199,14 +202,14 @@ const saveCollectSettings = async (req, res, next) => {
             eventItem.status === "scheduled"
           ) {
             console.log(
-              `📅 Scheduling future event "${eventItem.name}" for ${eventDateOnly.toDateString()}`
+              `📅 Scheduling future event "${eventItem.name}" for ${eventDateOnly.toDateString()}`,
             );
             await queueManager.addEventJob(
               {
                 targetDate: eventDateOnly.toISOString(),
                 triggeredBy: "scheduled",
               },
-              { delay: eventDate }
+              { delay: eventDate },
             );
           }
         }
@@ -214,7 +217,7 @@ const saveCollectSettings = async (req, res, next) => {
         // Process today's events immediately and wait for completion
         if (hasTodayEvents) {
           console.log(
-            `⚡ Processing ${todayEvents.length} event(s) for today immediately...`
+            `⚡ Processing ${todayEvents.length} event(s) for today immediately...`,
           );
           try {
             // Process events for today's date
@@ -222,9 +225,15 @@ const saveCollectSettings = async (req, res, next) => {
               targetDate: todayDateOnly.toISOString(),
               triggeredBy: "immediate-save",
             });
-            console.log("✅ Event processing completed:", eventProcessingResult);
+            console.log(
+              "✅ Event processing completed:",
+              eventProcessingResult,
+            );
           } catch (processingError) {
-            console.error("❌ Error processing today's events:", processingError);
+            console.error(
+              "❌ Error processing today's events:",
+              processingError,
+            );
             eventProcessingResult = {
               error: true,
               message: processingError.message,
@@ -279,26 +288,25 @@ const getCollectSettings = async (req, res, next) => {
 
     // Check if email templates exist for this channel, if not, seed them
     try {
-      const existingTemplates = await EmailTemplate.findByChannelId(
-        channelObjectId
-      );
+      const existingTemplates =
+        await EmailTemplate.findByChannelId(channelObjectId);
       if (!existingTemplates || existingTemplates.length === 0) {
         console.log(
-          `🌱 No email templates found for channel ${channelId}, auto-seeding...`
+          `🌱 No email templates found for channel ${channelId}, auto-seeding...`,
         );
         await seedEmailTemplatesForChannel(channelObjectId);
       }
     } catch (seedError) {
       console.error(
         "⚠️ Error auto-seeding email templates:",
-        seedError.message
+        seedError.message,
       );
       // Continue even if seeding fails
     }
 
     const settings = await CollectSettings.findByStoreAndChannel(
       storeObjectId,
-      channelObjectId
+      channelObjectId,
     );
 
     if (!settings) {

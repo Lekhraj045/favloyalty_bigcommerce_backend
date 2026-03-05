@@ -85,7 +85,7 @@ const getTransactions = async (req, res, next) => {
     const total = await Transaction.countDocuments(query);
 
     console.log(
-      `✅ Found ${transactions.length} transactions (total: ${total}) for store ${storeId}`
+      `✅ Found ${transactions.length} transactions (total: ${total}) for store ${storeId}`,
     );
 
     // Format response
@@ -216,10 +216,18 @@ const createTransaction = async (req, res, next) => {
     } = req.body;
 
     // Validate required fields
-    if (!customerId || !storeId || !channelId || !type || points === undefined || !description) {
+    if (
+      !customerId ||
+      !storeId ||
+      !channelId ||
+      !type ||
+      points === undefined ||
+      !description
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: customerId, storeId, channelId, type, points, description",
+        message:
+          "Missing required fields: customerId, storeId, channelId, type, points, description",
       });
     }
 
@@ -283,7 +291,7 @@ const createTransaction = async (req, res, next) => {
       await Customer.updatePoints(
         new mongoose.Types.ObjectId(customerId),
         transaction.points,
-        transaction.type
+        transaction.type,
       );
 
       // Recalculate customer tier after points update
@@ -300,13 +308,14 @@ const createTransaction = async (req, res, next) => {
           const updatedCustomer = await Customer.findById(customerId);
           if (updatedCustomer) {
             const customerPoints = updatedCustomer.points || 0;
-            
+
             // Capture PREVIOUS tier before recalculation
-            const previousTierIndex = updatedCustomer.currentTier?.tierIndex ?? -1;
+            const previousTierIndex =
+              updatedCustomer.currentTier?.tierIndex ?? -1;
 
             // Sort tiers by pointRequired in ascending order
             const sortedTiers = [...point.tier].sort(
-              (a, b) => a.pointRequired - b.pointRequired
+              (a, b) => a.pointRequired - b.pointRequired,
             );
 
             // Find the appropriate tier based on customer's points
@@ -339,8 +348,10 @@ const createTransaction = async (req, res, next) => {
               const needsUpdate =
                 !updatedCustomer.currentTier ||
                 updatedCustomer.currentTier.tierIndex !== assignedTierIndex ||
-                updatedCustomer.currentTier.multiplier !== assignedTier.multiplier ||
-                updatedCustomer.currentTier.minPointsRequired !== assignedTier.pointRequired ||
+                updatedCustomer.currentTier.multiplier !==
+                  assignedTier.multiplier ||
+                updatedCustomer.currentTier.minPointsRequired !==
+                  assignedTier.pointRequired ||
                 updatedCustomer.currentTier.maxPoints !== maxPoints;
 
               if (needsUpdate) {
@@ -352,25 +363,32 @@ const createTransaction = async (req, res, next) => {
                 };
                 await updatedCustomer.save();
                 console.log(
-                  `✅ Customer tier updated: ${updatedCustomer.email} -> Tier ${assignedTierIndex} (${assignedTier.tierName})`
+                  `✅ Customer tier updated: ${updatedCustomer.email} -> Tier ${assignedTierIndex} (${assignedTier.tierName})`,
                 );
-                
+
                 // Check if this is an UPGRADE (not degradation) and schedule email
                 if (assignedTierIndex > previousTierIndex && point.tierStatus) {
                   try {
-                    const newTierName = assignedTier.tierName || `Tier ${assignedTierIndex + 1}`;
-                    await queueManager.addTierUpgradeEmailJob({
-                      customerId: updatedCustomer._id.toString(),
-                      storeId: storeId.toString(),
-                      channelId: channel._id.toString(),
-                      newTierName: newTierName,
-                      newTierIndex: assignedTierIndex,
-                    }, { delay: 'in 5 seconds' });
+                    const newTierName =
+                      assignedTier.tierName || `Tier ${assignedTierIndex + 1}`;
+                    await queueManager.addTierUpgradeEmailJob(
+                      {
+                        customerId: updatedCustomer._id.toString(),
+                        storeId: storeId.toString(),
+                        channelId: channel._id.toString(),
+                        newTierName: newTierName,
+                        newTierIndex: assignedTierIndex,
+                      },
+                      { delay: "in 5 seconds" },
+                    );
                     console.log(
-                      `📧 Tier upgrade email scheduled for customer ${updatedCustomer._id} -> "${newTierName}"`
+                      `📧 Tier upgrade email scheduled for customer ${updatedCustomer._id} -> "${newTierName}"`,
                     );
                   } catch (emailErr) {
-                    console.warn(`⚠️ Failed to schedule tier upgrade email for ${updatedCustomer._id}:`, emailErr.message);
+                    console.warn(
+                      `⚠️ Failed to schedule tier upgrade email for ${updatedCustomer._id}:`,
+                      emailErr.message,
+                    );
                   }
                 }
               }
@@ -379,7 +397,10 @@ const createTransaction = async (req, res, next) => {
         }
       } catch (tierError) {
         // Log error but don't fail the transaction creation
-        console.error("⚠️ Error recalculating customer tier after points adjustment:", tierError);
+        console.error(
+          "⚠️ Error recalculating customer tier after points adjustment:",
+          tierError,
+        );
       }
     }
 
@@ -481,10 +502,17 @@ const bulkImportPoints = async (req, res, next) => {
     const { storeId, channelId, importType, customers } = req.body;
 
     // Validate required fields
-    if (!storeId || !channelId || !importType || !customers || !Array.isArray(customers)) {
+    if (
+      !storeId ||
+      !channelId ||
+      !importType ||
+      !customers ||
+      !Array.isArray(customers)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: storeId, channelId, importType, customers",
+        message:
+          "Missing required fields: storeId, channelId, importType, customers",
       });
     }
 
@@ -605,7 +633,7 @@ const bulkImportPoints = async (req, res, next) => {
         await Customer.updatePoints(
           customer._id,
           pointsDifference,
-          "adjustment"
+          "adjustment",
         );
 
         // Recalculate customer tier after points update
@@ -615,7 +643,7 @@ const bulkImportPoints = async (req, res, next) => {
             if (updatedCustomer) {
               const customerPoints = updatedCustomer.points || 0;
               const sortedTiers = [...point.tier].sort(
-                (a, b) => a.pointRequired - b.pointRequired
+                (a, b) => a.pointRequired - b.pointRequired,
               );
 
               let assignedTier = null;
@@ -651,7 +679,10 @@ const bulkImportPoints = async (req, res, next) => {
               }
             }
           } catch (tierError) {
-            console.error(`⚠️ Error recalculating tier for ${email}:`, tierError);
+            console.error(
+              `⚠️ Error recalculating tier for ${email}:`,
+              tierError,
+            );
           }
         }
 
@@ -667,7 +698,7 @@ const bulkImportPoints = async (req, res, next) => {
     }
 
     console.log(
-      `✅ Bulk import complete: ${results.success} successful, ${results.failed} failed, ${results.notFound} not found`
+      `✅ Bulk import complete: ${results.success} successful, ${results.failed} failed, ${results.notFound} not found`,
     );
 
     res.json({
@@ -718,27 +749,40 @@ const getPointsAwardedStats = async (req, res, next) => {
 
     const storeObjectId = new mongoose.Types.ObjectId(storeId);
 
-    // Resolve numeric channel_id: API may receive either numeric BC channel_id or Channel MongoDB _id
+    // Resolve channel: API may receive numeric BC channel_id OR Channel MongoDB _id
     let numericChannelId;
-    if (mongoose.Types.ObjectId.isValid(channelId) && String(channelId).length === 24) {
-      const Channel = require("../models/Channel");
-      const channel = await Channel.findOne({
+    let channelDoc;
+    if (
+      mongoose.Types.ObjectId.isValid(channelId) &&
+      String(channelId).length === 24
+    ) {
+      channelDoc = await Channel.findOne({
         _id: channelId,
         store_id: storeObjectId,
       });
-      if (!channel) {
+      if (!channelDoc) {
         return res.status(404).json({
           success: false,
           message: "Channel not found",
         });
       }
-      numericChannelId = channel.channel_id;
+      numericChannelId = channelDoc.channel_id;
     } else {
       numericChannelId = parseInt(channelId, 10);
       if (isNaN(numericChannelId)) {
         return res.status(400).json({
           success: false,
           message: "Invalid channelId format",
+        });
+      }
+      channelDoc = await Channel.findOne({
+        store_id: storeObjectId,
+        channel_id: numericChannelId,
+      });
+      if (!channelDoc) {
+        return res.status(404).json({
+          success: false,
+          message: "Channel not found",
         });
       }
     }
@@ -759,9 +803,12 @@ const getPointsAwardedStats = async (req, res, next) => {
     endDateCurrent.setHours(23, 59, 59, 999); // Set to end of day
 
     // Calculate previous period (same duration before start date)
-    const periodDuration = endDateCurrent.getTime() - startDateCurrent.getTime();
+    const periodDuration =
+      endDateCurrent.getTime() - startDateCurrent.getTime();
     const endDatePrevious = new Date(startDateCurrent.getTime() - 1);
-    const startDatePrevious = new Date(endDatePrevious.getTime() - periodDuration);
+    const startDatePrevious = new Date(
+      endDatePrevious.getTime() - periodDuration,
+    );
 
     // Map transactionCategory + description to display name
     // - transactionCategory "order" -> Purchase Product (webhook)
@@ -918,7 +965,9 @@ const getPointsAwardedStats = async (req, res, next) => {
       // Calculate growth percentage
       let growth = 0;
       if (totalPointsPrevious > 0) {
-        growth = ((totalPointsCurrent - totalPointsPrevious) / totalPointsPrevious) * 100;
+        growth =
+          ((totalPointsCurrent - totalPointsPrevious) / totalPointsPrevious) *
+          100;
       } else if (totalPointsCurrent > 0) {
         growth = 100; // 100% growth if previous was 0 and current > 0
       }
@@ -934,13 +983,36 @@ const getPointsAwardedStats = async (req, res, next) => {
     // Calculate total points awarded
     const totalPointsAwarded = stats.reduce(
       (sum, stat) => sum + stat.totalPointsCurrent,
-      0
+      0,
     );
+
+    // Equivalent value from store-credit (fixed discount) redeem: totalPointsAwarded -> currency
+    let totalPointsAwardedEquivalent = 0;
+    const redeemList = await RedeemSettings.findByStoreAndChannel(
+      storeObjectId,
+      channelDoc._id,
+    );
+    const fixedDiscount = Array.isArray(redeemList)
+      ? redeemList.find(
+          (r) =>
+            r.redeemType === "storeCredit" &&
+            r.coupon?.active &&
+            (r.coupon?.value || 0) > 0 &&
+            (r.coupon?.discountAmount ?? 0) >= 0,
+        )
+      : null;
+    if (fixedDiscount?.coupon) {
+      const value = Number(fixedDiscount.coupon.value) || 1;
+      const discountAmount = Number(fixedDiscount.coupon.discountAmount) || 0;
+      totalPointsAwardedEquivalent =
+        Math.round((totalPointsAwarded / value) * discountAmount * 100) / 100;
+    }
 
     res.json({
       success: true,
       data: {
         totalPointsAwarded,
+        totalPointsAwardedEquivalent,
         stats,
       },
     });
@@ -1009,10 +1081,11 @@ const getPointsRedeemedStats = async (req, res, next) => {
     endDateCurrent.setHours(23, 59, 59, 999);
 
     // Previous period (same duration before start date)
-    const periodDuration = endDateCurrent.getTime() - startDateCurrent.getTime();
+    const periodDuration =
+      endDateCurrent.getTime() - startDateCurrent.getTime();
     const endDatePrevious = new Date(startDateCurrent.getTime() - 1);
     const startDatePrevious = new Date(
-      endDatePrevious.getTime() - periodDuration
+      endDatePrevious.getTime() - periodDuration,
     );
 
     const buildPipeline = (startD, endD) => [
@@ -1039,7 +1112,14 @@ const getPointsRedeemedStats = async (req, res, next) => {
                 $expr: {
                   $eq: [
                     "$_id",
-                    { $toObjectId: { $ifNull: ["$$redeemSettingIdStr", "000000000000000000000000"] } },
+                    {
+                      $toObjectId: {
+                        $ifNull: [
+                          "$$redeemSettingIdStr",
+                          "000000000000000000000000",
+                        ],
+                      },
+                    },
                   ],
                 },
               },
@@ -1142,7 +1222,7 @@ const getPointsRedeemedStats = async (req, res, next) => {
 
     const totalPointsRedeemed = stats.reduce(
       (sum, s) => sum + s.totalPointsRedeemed,
-      0
+      0,
     );
 
     res.json({

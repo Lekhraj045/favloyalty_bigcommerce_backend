@@ -12,7 +12,10 @@ const Referral = require("../models/Referral");
 const mongoose = require("mongoose");
 const { syncChannelScript } = require("../services/bigcommerceScriptsService");
 const { getExpiryDate } = require("../helpers/emailHelpers");
-const { calculateAndUpdateCustomerTier, checkAndScheduleTierUpgradeEmail } = require("../helpers/tierHelper");
+const {
+  calculateAndUpdateCustomerTier,
+  checkAndScheduleTierUpgradeEmail,
+} = require("../helpers/tierHelper");
 const queueManager = require("../queues/queueManager");
 
 const TIER_NAMES = ["Silver", "Gold", "Platinum", "Diamond"];
@@ -69,7 +72,7 @@ const getCustomerData = async (req, res, next) => {
             "Content-Type": "application/json",
             Accept: "application/json",
           },
-        }
+        },
       );
 
       const customer = response.data;
@@ -161,7 +164,7 @@ async function resolveCustomerContext(req, res, payloadOrFallback) {
     "found=",
     !!store,
     "storeId=",
-    store?._id?.toString()
+    store?._id?.toString(),
   );
   if (!store) {
     res.status(404).json({
@@ -188,7 +191,7 @@ async function resolveCustomerContext(req, res, payloadOrFallback) {
       "[FavLoyalty API] resolveCustomerContext: channel by channelId=",
       channelId,
       "found=",
-      !!channel
+      !!channel,
     );
   }
   if (!channel) {
@@ -197,7 +200,7 @@ async function resolveCustomerContext(req, res, payloadOrFallback) {
       "[FavLoyalty API] resolveCustomerContext: channel fallback found=",
       !!channel,
       "channel_id(BC)=",
-      channel?.channel_id
+      channel?.channel_id,
     );
   }
   if (!channel) {
@@ -225,7 +228,12 @@ async function resolveCustomerContext(req, res, payloadOrFallback) {
  * On success: awards points, schedules welcome-back email, updates lastVisit.
  * On any error: logs and silently swallows (must never break the widget).
  */
-async function checkAndAwardRejoin({ customer, store, channel, collectSettings }) {
+async function checkAndAwardRejoin({
+  customer,
+  store,
+  channel,
+  collectSettings,
+}) {
   try {
     console.log(
       `[FavLoyalty Rejoin] Starting rejoin check for customer ${customer._id}, store ${store._id}, channel ${channel._id}`,
@@ -266,7 +274,9 @@ async function checkAndAwardRejoin({ customer, store, channel, collectSettings }
     const now = new Date();
     const lastVisitDate = new Date(customer.lastVisit);
     const msSinceLastVisit = now.getTime() - lastVisitDate.getTime();
-    const daysSinceLastVisit = Math.floor(msSinceLastVisit / (1000 * 60 * 60 * 24));
+    const daysSinceLastVisit = Math.floor(
+      msSinceLastVisit / (1000 * 60 * 60 * 24),
+    );
 
     console.log(
       `[FavLoyalty Rejoin] daysSinceLastVisit=${daysSinceLastVisit}, lastVisitDate=${lastVisitDate.toISOString()}, now=${now.toISOString()}`,
@@ -283,7 +293,11 @@ async function checkAndAwardRejoin({ customer, store, channel, collectSettings }
 
     // 4. Race-condition guard: check if already awarded "Rejoining Bonus" today
     //    (prevents double-award on rapid page refreshes)
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
     const todayEnd = new Date(todayStart);
     todayEnd.setDate(todayEnd.getDate() + 1);
 
@@ -340,14 +354,21 @@ async function checkAndAwardRejoin({ customer, store, channel, collectSettings }
       try {
         const rawTier = customer.currentTier;
         const previousTier = rawTier
-          ? { ...(typeof rawTier.toObject === "function" ? rawTier.toObject() : rawTier) }
+          ? {
+              ...(typeof rawTier.toObject === "function"
+                ? rawTier.toObject()
+                : rawTier),
+            }
           : null;
 
         console.log(
           `[FavLoyalty Rejoin] Recalculating tier for customer ${customer._id}, previousTier=${JSON.stringify(previousTier)}, tierStatus=${pointModel.tierStatus}`,
         );
 
-        const tierResult = await calculateAndUpdateCustomerTier(customer, pointModel);
+        const tierResult = await calculateAndUpdateCustomerTier(
+          customer,
+          pointModel,
+        );
         console.log(
           `[FavLoyalty Rejoin] Tier recalculation result: tierUpdated=${tierResult.tierUpdated}, message=${tierResult.message}`,
         );
@@ -425,7 +446,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
       "storeHash=",
       storeHash || "(missing)",
       "customerId=",
-      customerId ?? "(missing)"
+      customerId ?? "(missing)",
     );
 
     let context = null;
@@ -434,7 +455,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
       const clientSecret = process.env.CLIENT_SECRET;
       if (!clientSecret) {
         console.log(
-          "[FavLoyalty API] verifyCurrentCustomer: 500 - CLIENT_SECRET not set"
+          "[FavLoyalty API] verifyCurrentCustomer: 500 - CLIENT_SECRET not set",
         );
         return res.status(500).json({
           success: false,
@@ -453,12 +474,12 @@ const verifyCurrentCustomer = async (req, res, next) => {
           "store_hash=",
           payload.store_hash,
           "customer.id=",
-          payload.customer?.id
+          payload.customer?.id,
         );
       } catch (err) {
         console.log(
           "[FavLoyalty API] verifyCurrentCustomer: 401 - JWT verify failed",
-          err.message
+          err.message,
         );
         return res.status(401).json({
           success: false,
@@ -481,7 +502,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
     } else if (storeHash && channelId != null && channelId !== "") {
       // Allow empty customerId so widget can open immediately and show loading; backend returns inLoyaltyProgram: false until real customerId is sent
       console.log(
-        "[FavLoyalty API] verifyCurrentCustomer: using fallback (storeHash + channelId + customerId)"
+        "[FavLoyalty API] verifyCurrentCustomer: using fallback (storeHash + channelId + customerId)",
       );
       context = await resolveCustomerContext(req, res, {
         storeHash,
@@ -490,7 +511,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
       });
     } else {
       console.log(
-        "[FavLoyalty API] verifyCurrentCustomer: 400 - need JWT or (storeHash + channelId)"
+        "[FavLoyalty API] verifyCurrentCustomer: 400 - need JWT or (storeHash + channelId)",
       );
       return res.status(400).json({
         success: false,
@@ -506,7 +527,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
     // Fetch collect settings for widget (e.g. Refer & Earn enabled/points)
     const collectSettings = await CollectSettings.findByStoreAndChannel(
       store._id,
-      channel._id
+      channel._id,
     );
     const referAndEarnEnabled = collectSettings?.referAndEarn?.active === true;
     const referAndEarnPoints = collectSettings?.referAndEarn?.point ?? 0;
@@ -522,7 +543,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
         store_id: store._id.toString(),
         channel_id: channel.channel_id,
         bcCustomerId,
-      })
+      }),
     );
 
     const customer = await Customer.findOne(customerQuery).lean();
@@ -531,7 +552,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
       "[FavLoyalty API] verifyCurrentCustomer: customer found=",
       !!customer,
       "customerId=",
-      customer?._id?.toString()
+      customer?._id?.toString(),
     );
 
     if (!customer) {
@@ -563,7 +584,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
     if (tierSystemEnabled && customer.currentTier != null) {
       tierIndex = customer.currentTier.tierIndex ?? 0;
       const sortedTiers = [...(pointConfig.tier || [])].sort(
-        (a, b) => (a.pointRequired || 0) - (b.pointRequired || 0)
+        (a, b) => (a.pointRequired || 0) - (b.pointRequired || 0),
       );
       const tierAt = sortedTiers[tierIndex];
       tierDisplay = tierAt?.tierName || TIER_NAMES[tierIndex] || "Bronze";
@@ -583,7 +604,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
     let equivalentValue = 0;
     const redeemList = await RedeemSettings.findByStoreAndChannel(
       store._id,
-      channel._id
+      channel._id,
     );
     const fixedDiscount = Array.isArray(redeemList)
       ? redeemList.find(
@@ -591,7 +612,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
             r.redeemType === "storeCredit" &&
             r.coupon?.active &&
             (r.coupon?.value || 0) > 0 &&
-            (r.coupon?.discountAmount ?? 0) >= 0
+            (r.coupon?.discountAmount ?? 0) >= 0,
         )
       : null;
     if (fixedDiscount?.coupon) {
@@ -631,7 +652,7 @@ const verifyCurrentCustomer = async (req, res, next) => {
       "[FavLoyalty API] verifyCurrentCustomer: 200 inLoyaltyProgram=true userName=",
       userName,
       "points=",
-      customer.points
+      customer.points,
     );
 
     res.json({
@@ -731,7 +752,7 @@ const getStorefrontToken = async (req, res, next) => {
       console.error(
         "[FavLoyalty] getStorefrontToken: BigCommerce API error:",
         status,
-        data
+        data,
       );
       const message =
         data?.title ||
@@ -750,7 +771,7 @@ const getStorefrontToken = async (req, res, next) => {
     if (!token) {
       console.error(
         "[FavLoyalty] getStorefrontToken: no token in response:",
-        JSON.stringify(response.data).slice(0, 200)
+        JSON.stringify(response.data).slice(0, 200),
       );
       return res.status(502).json({
         success: false,
@@ -761,7 +782,7 @@ const getStorefrontToken = async (req, res, next) => {
   } catch (error) {
     console.error(
       "Error getting storefront token:",
-      error?.response?.data ?? error.message
+      error?.response?.data ?? error.message,
     );
     res.status(502).json({
       success: false,
@@ -802,7 +823,7 @@ const getWidgetChannelSettings = async (req, res, next) => {
     }
     const collectSettings = await CollectSettings.findByStoreAndChannel(
       store._id,
-      new mongoose.Types.ObjectId(channelId)
+      new mongoose.Types.ObjectId(channelId),
     );
     const referAndEarnEnabled = collectSettings?.referAndEarn?.active === true;
     const referAndEarnPoints = collectSettings?.referAndEarn?.point ?? 0;
@@ -840,7 +861,7 @@ const getWidgetChannelSettings = async (req, res, next) => {
     let announcements = [];
     const customization = await WidgetCustomization.findByStoreAndChannel(
       store._id,
-      new mongoose.Types.ObjectId(channelId)
+      new mongoose.Types.ObjectId(channelId),
     );
     if (customization?.announcements?.length) {
       const baseUrl = process.env.BACKEND_URL || process.env.API_URL || "";
@@ -991,8 +1012,8 @@ const checkWidgetVisibility = async (req, res, next) => {
         reason: isVisible
           ? "Widget is active"
           : isSetupComplete
-          ? "Widget disabled for this channel"
-          : "Setup not complete",
+            ? "Widget disabled for this channel"
+            : "Setup not complete",
         setupProgress: channel.setupprogress || 0,
         pointsTierSystemCompleted: channel.pointsTierSystemCompleted || false,
         waysToEarnCompleted: channel.waysToEarnCompleted || false,
@@ -1009,7 +1030,7 @@ const checkWidgetVisibility = async (req, res, next) => {
         channel.waysToEarnCompleted &&
         channel.waysToRedeemCompleted &&
         channel.customiseWidgetCompleted &&
-        channel.widget_visibility !== false
+        channel.widget_visibility !== false,
     );
 
     return res.json({
@@ -1248,10 +1269,16 @@ const getWidgetTransactions = async (req, res, next) => {
  */
 const createReferral = async (req, res, next) => {
   try {
-    const { currentCustomerJwt, channelId, storeHash, customerId, referredEmail } =
-      req.body;
+    const {
+      currentCustomerJwt,
+      channelId,
+      storeHash,
+      customerId,
+      referredEmail,
+    } = req.body;
 
-    const trimmedEmail = referredEmail != null ? String(referredEmail).trim() : "";
+    const trimmedEmail =
+      referredEmail != null ? String(referredEmail).trim() : "";
     if (!trimmedEmail) {
       return res.status(400).json({
         success: false,
@@ -1324,10 +1351,11 @@ const createReferral = async (req, res, next) => {
 
     const collectSettings = await CollectSettings.findByStoreAndChannel(
       store._id,
-      channel._id
+      channel._id,
     );
     const referAndEarnEnabled = collectSettings?.referAndEarn?.active === true;
-    const referAndEarnPoints = Number(collectSettings?.referAndEarn?.point) || 0;
+    const referAndEarnPoints =
+      Number(collectSettings?.referAndEarn?.point) || 0;
     if (!referAndEarnEnabled || referAndEarnPoints <= 0) {
       return res.status(400).json({
         success: false,
@@ -1350,7 +1378,12 @@ const createReferral = async (req, res, next) => {
     const existingCustomer = await Customer.findOne({
       store_id: store._id,
       channel_id: numericChannelId,
-      email: { $regex: new RegExp(`^${normalizedReferred.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") },
+      email: {
+        $regex: new RegExp(
+          `^${normalizedReferred.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+          "i",
+        ),
+      },
     });
     if (existingCustomer) {
       return res.status(400).json({
@@ -1394,13 +1427,14 @@ const createReferral = async (req, res, next) => {
     } catch (emailJobError) {
       console.warn(
         "[FavLoyalty] createReferral: failed to schedule referral invitation email:",
-        emailJobError?.message
+        emailJobError?.message,
       );
     }
 
     return res.status(201).json({
       success: true,
-      message: "Referral sent! Your friend will get signup points when they join, and you'll earn points after their first order is completed.",
+      message:
+        "Referral sent! Your friend will get signup points when they join, and you'll earn points after their first order is completed.",
     });
   } catch (err) {
     console.error("Error creating referral:", err);
@@ -1630,19 +1664,19 @@ const saveCustomerBirthday = async (req, res, next) => {
       try {
         // Capture previous tier before recalculation
         const previousTier = customer.currentTier
-          ? { ...customer.currentTier.toObject?.() || customer.currentTier }
+          ? { ...(customer.currentTier.toObject?.() || customer.currentTier) }
           : null;
-        
+
         const tierResult = await calculateAndUpdateCustomerTier(
           customer,
-          pointModel
+          pointModel,
         );
         if (tierResult.tierUpdated) {
           console.log(
             "[FavLoyalty] saveCustomerBirthday: tier updated after birthday points:",
-            tierResult.message
+            tierResult.message,
           );
-          
+
           // Schedule tier upgrade email if tier was upgraded
           await checkAndScheduleTierUpgradeEmail(
             tierResult,
@@ -1656,7 +1690,7 @@ const saveCustomerBirthday = async (req, res, next) => {
       } catch (tierError) {
         console.warn(
           "[FavLoyalty] saveCustomerBirthday: tier recalculation failed:",
-          tierError.message
+          tierError.message,
         );
       }
     }
@@ -1670,12 +1704,12 @@ const saveCustomerBirthday = async (req, res, next) => {
           channelId: channel._id.toString(),
           birthdayPoints,
         },
-        { delay: "in 5 seconds" }
+        { delay: "in 5 seconds" },
       );
     } catch (emailJobError) {
       console.warn(
         "[FavLoyalty] saveCustomerBirthday: failed to schedule birthday email job:",
-        emailJobError.message
+        emailJobError.message,
       );
     }
 
@@ -1803,26 +1837,26 @@ const saveCustomerProfile = async (req, res, next) => {
         contactNoStr != null
           ? contactNoStr
           : existingProfile.contactNo != null
-          ? existingProfile.contactNo
-          : null,
+            ? existingProfile.contactNo
+            : null,
       ageGroup:
         ageGroupStr != null && ageGroupStr !== ""
           ? ageGroupStr
           : existingProfile.ageGroup != null
-          ? existingProfile.ageGroup
-          : null,
+            ? existingProfile.ageGroup
+            : null,
       gender:
         genderStr != null && genderStr !== ""
           ? genderStr
           : existingProfile.gender != null
-          ? existingProfile.gender
-          : null,
+            ? existingProfile.gender
+            : null,
       weddingAnniversary:
         weddingAnniversaryDate != null
           ? weddingAnniversaryDate
           : existingProfile.weddingAnniversary != null
-          ? existingProfile.weddingAnniversary
-          : null,
+            ? existingProfile.weddingAnniversary
+            : null,
     };
 
     await Customer.updateCustomer(customer._id, {
@@ -1851,11 +1885,11 @@ const saveCustomerProfile = async (req, res, next) => {
 
     if (!collectSettings) {
       console.log(
-        "[FavLoyalty] saveCustomerProfile: no CollectSettings for store/channel, profile points not awarded"
+        "[FavLoyalty] saveCustomerProfile: no CollectSettings for store/channel, profile points not awarded",
       );
     } else if (!profileCompletionActive || profileCompletionPoints <= 0) {
       console.log(
-        "[FavLoyalty] saveCustomerProfile: Complete Profile not enabled or 0 points in Ways to Earn (basic.profileComplition), profile points not awarded"
+        "[FavLoyalty] saveCustomerProfile: Complete Profile not enabled or 0 points in Ways to Earn (basic.profileComplition), profile points not awarded",
       );
     }
 
@@ -1869,7 +1903,7 @@ const saveCustomerProfile = async (req, res, next) => {
       });
       if (existingProfileTx) {
         console.log(
-          "[FavLoyalty] saveCustomerProfile: customer already received Profile Completion points once, skipping award"
+          "[FavLoyalty] saveCustomerProfile: customer already received Profile Completion points once, skipping award",
         );
       }
       if (!existingProfileTx) {
@@ -1904,19 +1938,22 @@ const saveCustomerProfile = async (req, res, next) => {
           try {
             // Capture previous tier before recalculation
             const previousTier = customer.currentTier
-              ? { ...customer.currentTier.toObject?.() || customer.currentTier }
+              ? {
+                  ...(customer.currentTier.toObject?.() ||
+                    customer.currentTier),
+                }
               : null;
-            
+
             const tierResult = await calculateAndUpdateCustomerTier(
               customer,
-              pointModel
+              pointModel,
             );
             if (tierResult.tierUpdated) {
               console.log(
                 "[FavLoyalty] saveCustomerProfile: tier updated after profile completion points:",
-                tierResult.message
+                tierResult.message,
               );
-              
+
               // Schedule tier upgrade email if tier was upgraded
               await checkAndScheduleTierUpgradeEmail(
                 tierResult,
@@ -1930,7 +1967,7 @@ const saveCustomerProfile = async (req, res, next) => {
           } catch (tierError) {
             console.warn(
               "[FavLoyalty] saveCustomerProfile: tier recalculation failed:",
-              tierError.message
+              tierError.message,
             );
           }
         }
@@ -1947,13 +1984,13 @@ const saveCustomerProfile = async (req, res, next) => {
             .catch(function (err) {
               console.warn(
                 "[FavLoyalty] saveCustomerProfile: failed to schedule profile completion email job:",
-                err && err.message
+                err && err.message,
               );
             });
         } catch (emailJobError) {
           console.warn(
             "[FavLoyalty] saveCustomerProfile: failed to schedule profile completion email job:",
-            emailJobError && emailJobError.message
+            emailJobError && emailJobError.message,
           );
         }
       }
@@ -2023,7 +2060,7 @@ const subscribeCustomerNewsletter = async (req, res, next) => {
 
       if (!context) {
         const e = new Error(
-          "Current customer JWT or (storeHash + channelId) required"
+          "Current customer JWT or (storeHash + channelId) required",
         );
         e.status = 400;
         e.alreadySent = true;
@@ -2033,7 +2070,7 @@ const subscribeCustomerNewsletter = async (req, res, next) => {
       const { store, channel, bcCustomerId } = context;
       if (!bcCustomerId || bcCustomerId === 0) {
         const e = new Error(
-          "You must be logged in to subscribe to the newsletter"
+          "You must be logged in to subscribe to the newsletter",
         );
         e.status = 400;
         throw e;
@@ -2099,11 +2136,17 @@ const subscribeCustomerNewsletter = async (req, res, next) => {
               try {
                 // Capture previous tier before recalculation
                 const previousTier = customer.currentTier
-                  ? { ...customer.currentTier.toObject?.() || customer.currentTier }
+                  ? {
+                      ...(customer.currentTier.toObject?.() ||
+                        customer.currentTier),
+                    }
                   : null;
-                
-                const tierResult = await calculateAndUpdateCustomerTier(customer, pointModel);
-                
+
+                const tierResult = await calculateAndUpdateCustomerTier(
+                  customer,
+                  pointModel,
+                );
+
                 if (tierResult.tierUpdated) {
                   // Schedule tier upgrade email if tier was upgraded
                   await checkAndScheduleTierUpgradeEmail(
@@ -2118,7 +2161,7 @@ const subscribeCustomerNewsletter = async (req, res, next) => {
               } catch (tierError) {
                 console.warn(
                   "[FavLoyalty] subscribeCustomerNewsletter: tier recalculation failed:",
-                  tierError && tierError.message
+                  tierError && tierError.message,
                 );
               }
             }
@@ -2139,7 +2182,7 @@ const subscribeCustomerNewsletter = async (req, res, next) => {
                 .catch((queueErr) => {
                   console.warn(
                     "[FavLoyalty] subscribeCustomerNewsletter: failed to schedule newsletter email:",
-                    queueErr && queueErr.message
+                    queueErr && queueErr.message,
                   );
                 });
             }
@@ -2231,7 +2274,7 @@ const getWidgetRedeemSettings = async (req, res, next) => {
     const channelIdForQuery = channel._id;
     const settings = await RedeemSettings.findByStoreAndChannel(
       store._id,
-      channelIdForQuery
+      channelIdForQuery,
     );
     const activeOnly = Array.isArray(settings)
       ? settings.filter((s) => s.coupon?.active === true)
@@ -2258,13 +2301,13 @@ const getWidgetRedeemSettings = async (req, res, next) => {
       if (!restrictionEnabled) return true;
       if (customerTierIndex === null) return false;
       const allowedTiers = (custRestriction.tier || []).filter(
-        (t) => t && t.status === true
+        (t) => t && t.status === true,
       );
       if (allowedTiers.length === 0) return false;
       const allowedIndices = new Set(
         allowedTiers
           .map((t) => t.tierIndex)
-          .filter((n) => typeof n === "number")
+          .filter((n) => typeof n === "number"),
       );
       return allowedIndices.has(customerTierIndex);
     });

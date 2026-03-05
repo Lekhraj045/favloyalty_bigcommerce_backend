@@ -10,11 +10,10 @@ const handleLoad = async (req, res) => {
   const { signed_payload_jwt } = req.query;
 
   try {
-    const { storeHash } = await resolveStoreFromSignedPayload(
-      signed_payload_jwt,
-    );
+    const { storeHash } =
+      await resolveStoreFromSignedPayload(signed_payload_jwt);
 
-    const redirectUrl = new URL("/load", FRONTEND_BASE_URL);
+    const redirectUrl = new URL("load", FRONTEND_BASE_URL);
     redirectUrl.searchParams.set("signed_payload_jwt", signed_payload_jwt);
 
     console.log("✅ Store verified for load:", storeHash);
@@ -69,4 +68,3 @@ const handleLoad = async (req, res) => {
 module.exports = {
   handleLoad,
 };
-

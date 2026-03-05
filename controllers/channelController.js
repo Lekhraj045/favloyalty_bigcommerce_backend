@@ -6,6 +6,7 @@ const WidgetCustomization = require("../models/WidgetCustomization");
 const mongoose = require("mongoose");
 const { syncChannelScript } = require("../services/bigcommerceScriptsService");
 const { cancelEventJobsForChannel } = require("../queues/eventQueue");
+const Store = require("../models/Store");
 
 // Get channels for a store
 const getChannels = async (req, res, next) => {
@@ -33,9 +34,12 @@ const getChannels = async (req, res, next) => {
     const channels = await Channel.findByStoreId(storeObjectId.toString());
 
     // Format channels to match frontend Channel type
-    // Filter to only return active channels for UI display
+    // Filter to only return active BigCommerce-platform channels for UI display
     const formattedChannels = channels
-      .filter((channel) => channel.status === "active")
+      .filter(
+        (channel) =>
+          channel.status === "active" && channel.platform === "bigcommerce",
+      )
       .map((channel) => ({
         id: channel._id.toString(),
         channel_id: channel.channel_id,
@@ -60,7 +64,13 @@ const getChannels = async (req, res, next) => {
       `📋 Returning ${formattedChannels.length} active channels (filtered from ${channels.length} total)`,
     );
 
-    res.json(formattedChannels);
+    const store = await Store.findById(storeObjectId).lean();
+    const storeCurrency = store?.currency || "USD";
+
+    res.json({
+      channels: formattedChannels,
+      storeCurrency,
+    });
   } catch (error) {
     console.error("Error getting channels:", error);
     next(error);
@@ -339,7 +349,12 @@ const DEFAULT_POINT_SETTINGS = {
   customLogo: null,
   tier: [
     { tierName: "Silver", pointRequired: 0, multiplier: 1, badgeColor: null },
-    { tierName: "Gold", pointRequired: 1000, multiplier: 1.2, badgeColor: null },
+    {
+      tierName: "Gold",
+      pointRequired: 1000,
+      multiplier: 1.2,
+      badgeColor: null,
+    },
     {
       tierName: "Platinum",
       pointRequired: 5000,
@@ -424,7 +439,9 @@ const resetChannelSettings = async (req, res, next) => {
     }
 
     const storeObjectId =
-      typeof storeId === "string" ? new mongoose.Types.ObjectId(storeId) : storeId;
+      typeof storeId === "string"
+        ? new mongoose.Types.ObjectId(storeId)
+        : storeId;
 
     const channel = await Channel.findOne({
       _id: channelObjectId,
@@ -450,7 +467,7 @@ const resetChannelSettings = async (req, res, next) => {
           metaData: { createdAt: new Date() },
         },
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true },
     );
 
     // 3) Reset CollectSettings (Ways to Earn) - clear events, reset basic/refer/etc to defaults
@@ -462,7 +479,7 @@ const resetChannelSettings = async (req, res, next) => {
           metaData: { createdAt: new Date(), updatedAt: new Date() },
         },
       },
-      { upsert: true, new: true }
+      { upsert: true, new: true },
     );
 
     // 4) Delete all RedeemSettings (coupon creation methods) for this channel
@@ -489,7 +506,7 @@ const resetChannelSettings = async (req, res, next) => {
       await WidgetCustomization.findOneAndUpdate(
         { store_id: storeObjectId, channel_id: channelObjectId },
         { $set: widgetResetData },
-        { new: true }
+        { new: true },
       );
     } else {
       await WidgetCustomization.createOrUpdate({
@@ -512,7 +529,7 @@ const resetChannelSettings = async (req, res, next) => {
           widget_visibility: false,
         },
       },
-      { new: true }
+      { new: true },
     );
 
     // 7) Sync BigCommerce script (remove widget script since setup incomplete)

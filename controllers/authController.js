@@ -8,14 +8,14 @@ const {
   buildSessionToken,
   SESSION_TTL_SECONDS,
   FRONTEND_BASE_URL,
+  fetchStoreInfo,
 } = require("../helpers/bigcommerce");
-const { createOrUpdateWebhook } = require("../services/bigcommerceWebhookService");
+const {
+  createOrUpdateWebhook,
+} = require("../services/bigcommerceWebhookService");
 
 /** Scopes we subscribe to on install so BigCommerce sends webhooks to our /api/webhooks/receive */
-const WEBHOOK_SCOPES = [
-  "store/order/statusUpdated",
-  "store/customer/created",
-];
+const WEBHOOK_SCOPES = ["store/order/statusUpdated", "store/customer/created"];
 
 /**
  * Subscribe to BigCommerce webhooks for this store (called on install).
@@ -35,7 +35,10 @@ const subscribeWebhooksOnInstall = async (storeHash, accessToken) => {
       await createOrUpdateWebhook(storeHash, accessToken, scope, destination);
       console.log(`✅ Webhook subscribed on install: ${scope}`);
     } catch (err) {
-      console.error(`❌ Failed to subscribe webhook ${scope} on install:`, err.message);
+      console.error(
+        `❌ Failed to subscribe webhook ${scope} on install:`,
+        err.message,
+      );
     }
   }
 };
@@ -47,11 +50,25 @@ const login = async (req, res, next) => {
 
     const result = await resolveStoreFromSignedPayload(signedPayload);
 
+    const storeInfo = await fetchStoreInfo(
+      result.store.access_token,
+      result.storeHash,
+    );
+    console.log("Store info fetched on login:", storeInfo);
+
+    // Persist store info (including currency) so DB and frontend stay in sync
+    if (storeInfo) {
+      const updatedStore = await Store.updateOne(
+        { _id: result.store._id },
+        { currency: storeInfo.currency },
+      );
+    }
+
     // Fetch channel list after verification and sync with database
     const channelList = await fetchChannelList(
       result.store.access_token,
       result.storeHash,
-      result.store._id.toString()
+      result.store._id.toString(),
     );
 
     const response = buildLoginResponse(result, channelList);
@@ -93,7 +110,7 @@ const handleAuthCallback = async (req, res) => {
         headers: {
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     const { access_token, user, context: storeContext } = tokenResponse.data;
@@ -121,7 +138,7 @@ const handleAuthCallback = async (req, res) => {
       // Changed from storeId === 0 check
       console.error("❌ Store ID is invalid:", storeId);
       throw new Error(
-        "Failed to retrieve valid store ID after saving store data"
+        "Failed to retrieve valid store ID after saving store data",
       );
     }
 
@@ -132,11 +149,11 @@ const handleAuthCallback = async (req, res) => {
       access_token,
       storeHash,
       storeId,
-      true // filterActiveOnly = true for installation flow
+      true, // filterActiveOnly = true for installation flow
     );
 
     console.log(
-      `📋 Fetched ${channelList?.length || 0} channels from BigCommerce API`
+      `📋 Fetched ${channelList?.length || 0} channels from BigCommerce API`,
     );
 
     // Channels are now automatically synced in fetchChannelList
@@ -145,14 +162,14 @@ const handleAuthCallback = async (req, res) => {
     try {
       const existingChannels = await Channel.findByStoreId(storeId);
       savedChannels = existingChannels || [];
-    console.log(
-      `💾 Database now contains ${savedChannels.length} channels for store: ${storeHash}`
-    );
-  } catch (channelError) {
-    console.error("❌ Error retrieving saved channels:", {
-      message: channelError.message,
-    });
-  }
+      console.log(
+        `💾 Database now contains ${savedChannels.length} channels for store: ${storeHash}`,
+      );
+    } catch (channelError) {
+      console.error("❌ Error retrieving saved channels:", {
+        message: channelError.message,
+      });
+    }
 
     // Subscribe to webhooks (order status, customer created) on install
     await subscribeWebhooksOnInstall(storeHash, access_token);
@@ -183,11 +200,14 @@ const handleAuthCallback = async (req, res) => {
     const sessionExpiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
 
     // Redirect to frontend install page which will handle authentication and redirect to setup
-    const redirectUrl = new URL("/install", FRONTEND_BASE_URL);
+    const redirectUrl = new URL("install", FRONTEND_BASE_URL);
     redirectUrl.searchParams.set("storeHash", storeHash);
     redirectUrl.searchParams.set("storeId", storeId.toString());
     redirectUrl.searchParams.set("sessionToken", sessionToken);
-    redirectUrl.searchParams.set("sessionExpiresAt", sessionExpiresAt.toString());
+    redirectUrl.searchParams.set(
+      "sessionExpiresAt",
+      sessionExpiresAt.toString(),
+    );
     if (user?.email) {
       redirectUrl.searchParams.set("email", user.email);
     }
@@ -297,7 +317,7 @@ const handleLoad = async (req, res) => {
     const channelList = await fetchChannelList(
       result.store.access_token,
       result.storeHash,
-      result.store._id.toString()
+      result.store._id.toString(),
     );
 
     const response = buildLoginResponse(result, channelList);

@@ -26,7 +26,7 @@ function getAbsoluteImageUrl(imageUrl) {
 
   if (!baseUrl) {
     console.warn(
-      `⚠️  Cannot convert relative image URL to absolute. Set BACKEND_URL, SERVER_URL_PATH, or FRONTEND_BASE_URL in .env file. Image: ${imageUrl}`
+      `⚠️  Cannot convert relative image URL to absolute. Set BACKEND_URL, SERVER_URL_PATH, or FRONTEND_BASE_URL in .env file. Image: ${imageUrl}`,
     );
     return imageUrl; // Return as is, might work if frontend handles it
   }
