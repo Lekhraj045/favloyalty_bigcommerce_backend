@@ -123,6 +123,13 @@ const savePoints = async (req, res, next) => {
         };
       }
 
+      // When user selects a predefined logo (point-icon1..6), clear customLogo so widget shows the selected icon, not a previous upload
+      const isPredefinedLogo =
+        logo?.name && /^point-icon\d\.svg$/i.test(logo.name);
+      if (isPredefinedLogo && !req.file) {
+        customLogo = null;
+      }
+
       // Prepare point data
       const pointData = {
         store_id: storeObjectId,
@@ -142,6 +149,8 @@ const savePoints = async (req, res, next) => {
 
       if (customLogo) {
         pointData.customLogo = customLogo;
+      } else if (isPredefinedLogo) {
+        pointData.customLogo = null;
       }
 
       if (
@@ -171,30 +180,34 @@ const savePoints = async (req, res, next) => {
       let isTierUpdate = false;
       if (existingPoint) {
         // Check if tier settings changed
-        isTierUpdate = 
-          pointData.tierStatus && 
-          tier && 
-          Array.isArray(tier) && 
+        isTierUpdate =
+          pointData.tierStatus &&
+          tier &&
+          Array.isArray(tier) &&
           tier.length > 0 &&
           JSON.stringify(existingPoint.tier || []) !== JSON.stringify(tier);
-        
+
         // Update existing point
         Object.assign(existingPoint, pointData);
         savedPoint = await existingPoint.save();
       } else {
         // Create new point
         savedPoint = await Point.create(pointData);
-        isTierUpdate = pointData.tierStatus && tier && Array.isArray(tier) && tier.length > 0;
+        isTierUpdate =
+          pointData.tierStatus &&
+          tier &&
+          Array.isArray(tier) &&
+          tier.length > 0;
       }
 
       // If tier settings were saved/updated, recalculate customer tiers
       if (isTierUpdate) {
         try {
           const Customer = require("../models/Customer");
-          
+
           // Sort tiers by pointRequired in ascending order
           const sortedTiers = [...savedPoint.tier].sort(
-            (a, b) => a.pointRequired - b.pointRequired
+            (a, b) => a.pointRequired - b.pointRequired,
           );
 
           // Get all customers for this store and channel
@@ -204,7 +217,7 @@ const savePoints = async (req, res, next) => {
           });
 
           console.log(
-            `🔄 Recalculating tiers for ${customers.length} customers after tier settings save`
+            `🔄 Recalculating tiers for ${customers.length} customers after tier settings save`,
           );
 
           let updatedCount = 0;
@@ -213,7 +226,7 @@ const savePoints = async (req, res, next) => {
           // Recalculate tier for each customer
           for (const customer of customers) {
             const customerPoints = customer.points || 0;
-            
+
             // Capture PREVIOUS tier before recalculation
             const previousTierIndex = customer.currentTier?.tierIndex ?? -1;
 
@@ -251,28 +264,38 @@ const savePoints = async (req, res, next) => {
               };
               await customer.save();
               updatedCount++;
-              
+
               // Check if this is an UPGRADE (not degradation) and schedule email
-              if (assignedTierIndex > previousTierIndex && savedPoint.tierStatus) {
+              if (
+                assignedTierIndex > previousTierIndex &&
+                savedPoint.tierStatus
+              ) {
                 try {
-                  const newTierName = assignedTier.tierName || `Tier ${assignedTierIndex + 1}`;
-                  await queueManager.addTierUpgradeEmailJob({
-                    customerId: customer._id.toString(),
-                    storeId: storeObjectId.toString(),
-                    channelId: channel._id.toString(),
-                    newTierName: newTierName,
-                    newTierIndex: assignedTierIndex,
-                  }, { delay: 'in 5 seconds' });
+                  const newTierName =
+                    assignedTier.tierName || `Tier ${assignedTierIndex + 1}`;
+                  await queueManager.addTierUpgradeEmailJob(
+                    {
+                      customerId: customer._id.toString(),
+                      storeId: storeObjectId.toString(),
+                      channelId: channel._id.toString(),
+                      newTierName: newTierName,
+                      newTierIndex: assignedTierIndex,
+                    },
+                    { delay: "in 5 seconds" },
+                  );
                   emailsScheduled++;
                 } catch (emailErr) {
-                  console.warn(`⚠️ Failed to schedule tier upgrade email for ${customer._id}:`, emailErr.message);
+                  console.warn(
+                    `⚠️ Failed to schedule tier upgrade email for ${customer._id}:`,
+                    emailErr.message,
+                  );
                 }
               }
             }
           }
 
           console.log(
-            `✅ Tier recalculation complete: ${updatedCount} customers updated, ${emailsScheduled} tier upgrade emails scheduled`
+            `✅ Tier recalculation complete: ${updatedCount} customers updated, ${emailsScheduled} tier upgrade emails scheduled`,
           );
         } catch (tierError) {
           // Log error but don't fail the points save
@@ -370,6 +393,13 @@ const updatePoints = async (req, res, next) => {
         };
       }
 
+      // When user selects a predefined logo (point-icon1..6), clear customLogo so widget shows the selected icon, not a previous upload
+      const isPredefinedLogo =
+        logo?.name && /^point-icon\d\.svg$/i.test(logo.name);
+      if (isPredefinedLogo && !req.file) {
+        customLogo = null;
+      }
+
       // Update point data
       if (pointName) point.pointName = pointName;
       if (expiry !== undefined) {
@@ -391,6 +421,8 @@ const updatePoints = async (req, res, next) => {
 
       if (customLogo) {
         point.customLogo = customLogo;
+      } else if (isPredefinedLogo) {
+        point.customLogo = null;
       }
 
       if (customPointName && Array.isArray(customPointName)) {
@@ -410,13 +442,13 @@ const updatePoints = async (req, res, next) => {
         try {
           const Customer = require("../models/Customer");
           const Channel = require("../models/Channel");
-          
+
           // Get channel to find store_id
           const channel = await Channel.findById(point.channel_id);
           if (channel) {
             // Sort tiers by pointRequired in ascending order
             const sortedTiers = [...point.tier].sort(
-              (a, b) => a.pointRequired - b.pointRequired
+              (a, b) => a.pointRequired - b.pointRequired,
             );
 
             // Get all customers for this store and channel
@@ -426,7 +458,7 @@ const updatePoints = async (req, res, next) => {
             });
 
             console.log(
-              `🔄 Recalculating tiers for ${customers.length} customers after tier settings update`
+              `🔄 Recalculating tiers for ${customers.length} customers after tier settings update`,
             );
 
             let updatedCount = 0;
@@ -435,7 +467,7 @@ const updatePoints = async (req, res, next) => {
             // Recalculate tier for each customer
             for (const customer of customers) {
               const customerPoints = customer.points || 0;
-              
+
               // Capture PREVIOUS tier before recalculation
               const previousTierIndex = customer.currentTier?.tierIndex ?? -1;
 
@@ -473,28 +505,35 @@ const updatePoints = async (req, res, next) => {
                 };
                 await customer.save();
                 updatedCount++;
-                
+
                 // Check if this is an UPGRADE (not degradation) and schedule email
                 if (assignedTierIndex > previousTierIndex && point.tierStatus) {
                   try {
-                    const newTierName = assignedTier.tierName || `Tier ${assignedTierIndex + 1}`;
-                    await queueManager.addTierUpgradeEmailJob({
-                      customerId: customer._id.toString(),
-                      storeId: point.store_id.toString(),
-                      channelId: channel._id.toString(),
-                      newTierName: newTierName,
-                      newTierIndex: assignedTierIndex,
-                    }, { delay: 'in 5 seconds' });
+                    const newTierName =
+                      assignedTier.tierName || `Tier ${assignedTierIndex + 1}`;
+                    await queueManager.addTierUpgradeEmailJob(
+                      {
+                        customerId: customer._id.toString(),
+                        storeId: point.store_id.toString(),
+                        channelId: channel._id.toString(),
+                        newTierName: newTierName,
+                        newTierIndex: assignedTierIndex,
+                      },
+                      { delay: "in 5 seconds" },
+                    );
                     emailsScheduled++;
                   } catch (emailErr) {
-                    console.warn(`⚠️ Failed to schedule tier upgrade email for ${customer._id}:`, emailErr.message);
+                    console.warn(
+                      `⚠️ Failed to schedule tier upgrade email for ${customer._id}:`,
+                      emailErr.message,
+                    );
                   }
                 }
               }
             }
 
             console.log(
-              `✅ Tier recalculation complete: ${updatedCount} customers updated, ${emailsScheduled} tier upgrade emails scheduled`
+              `✅ Tier recalculation complete: ${updatedCount} customers updated, ${emailsScheduled} tier upgrade emails scheduled`,
             );
           }
         } catch (tierError) {

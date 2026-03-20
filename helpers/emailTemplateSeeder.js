@@ -3,34 +3,37 @@ const mongoose = require("mongoose");
 
 // Mapping template types directly to image paths in uploads/email-templates/email-images folder
 const TEMPLATE_TYPE_TO_IMAGE_MAP = {
-  "birthday": "/uploads/email-templates/email-images/birthday.png",
-  "couponExpire": "/uploads/email-templates/email-images/coupon-expire.png",
-  "festival": "/uploads/email-templates/email-images/festival-celebration-rewards.png",
-  "monthlyPoints": "/uploads/email-templates/email-images/monthly-points.png",
-  "newsletter": "/uploads/email-templates/email-images/loyalty-program.png",
-  "pointsExpire": "/uploads/email-templates/email-images/points_expired.png",
-  "referAndEarn": "/uploads/email-templates/email-images/refer_earn.png",
-  "rejoining": "/uploads/email-templates/email-images/welcome-to-our-loyalty-program.png",
-  "signUp": "/uploads/email-templates/email-images/welcome-to-our-loyalty-program.png",
-  "purchase": "/uploads/email-templates/email-images/points-on-order-fulfillment.png",
-  "profileCompletion": "/uploads/email-templates/email-images/profile-completion-reward.png",
-  "upgradedTrial": "/uploads/email-templates/email-images/tier_upgraded.png",
+  birthday: "/images/birthday.png",
+  couponExpire: "/images/coupon-expire.png",
+  festival: "/images/festival-celebration-rewards.png",
+  monthlyPoints: "/images/monthly-points.png",
+  newsletter: "/images/loyalty-program.png",
+  pointsExpire: "/images/points_expired.png",
+  referAndEarn: "/images/refer_earn.png",
+  rejoining: "/images/welcome-to-our-loyalty-program.png",
+  signUp: "/images/welcome-to-our-loyalty-program.png",
+  purchase: "/images/points-on-order-fulfillment.png",
+  profileCompletion: "/images/profile-completion-reward.png",
+  upgradedTrial: "/images/tier_upgraded.png",
 };
 
 // Legacy mapping for Cloudinary URLs (fallback) - now maps to uploads/email-templates/email-images
 const IMAGE_URL_MAP = {
-  "birthday_image.png": "/uploads/email-templates/email-images/birthday.png",
-  "coupon-expire_qfraje.png": "/uploads/email-templates/email-images/coupon-expire.png",
-  "image-5_v20daf.png": "/uploads/email-templates/email-images/festival-celebration-rewards.png",
-  "monthlypoints_lcthkw.png": "/uploads/email-templates/email-images/monthly-points.png",
-  "newletter_yabfyf.png": "/uploads/email-templates/email-images/loyalty-program.png",
-  "points_expired_lj7qf0.png": "/uploads/email-templates/email-images/points_expired.png",
-  "profile-completion-reward_ttop4b.png": "/uploads/email-templates/email-images/profile-completion-reward.png",
-  "points-on-order-fulfillment_pmzdpe.png": "/uploads/email-templates/email-images/points-on-order-fulfillment.png",
-  "refer_earn_modb5d.png": "/uploads/email-templates/email-images/refer_earn.png",
-  "rejoinReminder_gmmhua.png": "/uploads/email-templates/email-images/welcome-to-our-loyalty-program.png",
-  "welcome-to-our-loyalty-program_qxblux.png": "/uploads/email-templates/email-images/welcome-to-our-loyalty-program.png",
-  "tier_upgraded_trcdbe.png": "/uploads/email-templates/email-images/tier_upgraded.png",
+  "birthday_image.png": "/images/birthday.png",
+  "coupon-expire_qfraje.png": "/images/coupon-expire.png",
+  "image-5_v20daf.png": "/images/festival-celebration-rewards.png",
+  "monthlypoints_lcthkw.png": "/images/monthly-points.png",
+  "newletter_yabfyf.png": "/images/loyalty-program.png",
+  "points_expired_lj7qf0.png": "/images/points_expired.png",
+  "profile-completion-reward_ttop4b.png":
+    "/images/profile-completion-reward.png",
+  "points-on-order-fulfillment_pmzdpe.png":
+    "/images/points-on-order-fulfillment.png",
+  "refer_earn_modb5d.png": "/images/refer_earn.png",
+  "rejoinReminder_gmmhua.png": "/images/welcome-to-our-loyalty-program.png",
+  "welcome-to-our-loyalty-program_qxblux.png":
+    "/images/welcome-to-our-loyalty-program.png",
+  "tier_upgraded_trcdbe.png": "/images/tier_upgraded.png",
 };
 
 // Extract filename from Cloudinary URL
@@ -46,17 +49,27 @@ const convertImageUrl = (templateType, cloudinaryUrl) => {
   if (templateType && TEMPLATE_TYPE_TO_IMAGE_MAP[templateType]) {
     return TEMPLATE_TYPE_TO_IMAGE_MAP[templateType];
   }
-  
+
   // Fallback to Cloudinary URL mapping
   if (!cloudinaryUrl) return "";
-  
+
   // If already a public path, return as is
-  if (cloudinaryUrl.startsWith("/uploads/email-templates/email-images/") || cloudinaryUrl.startsWith("/uploads/email-images/") || cloudinaryUrl.startsWith("/images/")) {
+  if (
+    cloudinaryUrl.startsWith("/uploads/email-templates/email-images/") ||
+    cloudinaryUrl.startsWith("/uploads/email-images/") ||
+    cloudinaryUrl.startsWith("/images/")
+  ) {
     return cloudinaryUrl;
   }
-  
+
   const filename = extractFilename(cloudinaryUrl);
-  return IMAGE_URL_MAP[filename] || "/uploads/email-templates/email-images/default-email-banner.png";
+  console.log(
+    `🔄 Converting Cloudinary URL. Extracted filename: ${filename} from ${cloudinaryUrl}`,
+  );
+  return (
+    IMAGE_URL_MAP[filename] ||
+    "/uploads/email-templates/email-images/default-email-banner.png"
+  );
 };
 
 // Default email templates data
@@ -134,7 +147,12 @@ const getDefaultEmailTemplates = () => {
   </table>
 </body>
 </html>`,
-      options: ["{{customer_name}}", "{{signup_points}}", "{{point_name}}", "{{shop_link}}"],
+      options: [
+        "{{customer_name}}",
+        "{{signup_points}}",
+        "{{point_name}}",
+        "{{shop_link}}",
+      ],
     },
     {
       templateType: "purchase",
@@ -208,7 +226,12 @@ const getDefaultEmailTemplates = () => {
   </table>
 </body>
 </html>`,
-      options: ["{{customer_name}}", "{{purchase_points}}", "{{point_name}}", "{{shop_link}}"],
+      options: [
+        "{{customer_name}}",
+        "{{purchase_points}}",
+        "{{point_name}}",
+        "{{shop_link}}",
+      ],
     },
     // Add other templates similarly - for brevity, I'll create a function to load from JSON
   ];
@@ -230,21 +253,26 @@ const seedEmailTemplatesForChannel = async (channelId, force = false) => {
     console.log(`🌱 Seeding email templates for channel: ${channelObjectId}`);
 
     // Check if templates already exist for this channel
-    const existingTemplates = await EmailTemplate.findByChannelId(channelObjectId);
-    
+    const existingTemplates =
+      await EmailTemplate.findByChannelId(channelObjectId);
+
     if (existingTemplates && existingTemplates.length > 0 && !force) {
-      console.log(`ℹ️ Email templates already exist for channel ${channelObjectId}. Skipping seed.`);
+      console.log(
+        `ℹ️ Email templates already exist for channel ${channelObjectId}. Skipping seed.`,
+      );
       return;
     }
-    
+
     if (force && existingTemplates && existingTemplates.length > 0) {
-      console.log(`🔄 Force seeding: Templates exist but will be updated for channel ${channelObjectId}`);
+      console.log(
+        `🔄 Force seeding: Templates exist but will be updated for channel ${channelObjectId}`,
+      );
     }
 
     // Load default templates from JSON file
     const fs = require("fs");
     const path = require("path");
-    
+
     // Try multiple possible paths for the JSON file
     const possiblePaths = [
       path.join(__dirname, "../defaultEmailTemplates.json"), // Backend directory
@@ -255,52 +283,67 @@ const seedEmailTemplatesForChannel = async (channelId, force = false) => {
 
     let defaultTemplates = [];
     let jsonLoaded = false;
-    
+
     for (const jsonFilePath of possiblePaths) {
       try {
         if (fs.existsSync(jsonFilePath)) {
           const jsonData = fs.readFileSync(jsonFilePath, "utf8");
           const parsedData = JSON.parse(jsonData);
-          
+
           // Handle both array and object formats
           if (Array.isArray(parsedData)) {
             defaultTemplates = parsedData;
-          } else if (parsedData.templates && Array.isArray(parsedData.templates)) {
+          } else if (
+            parsedData.templates &&
+            Array.isArray(parsedData.templates)
+          ) {
             defaultTemplates = parsedData.templates;
           } else {
             defaultTemplates = [parsedData];
           }
-          
+
           jsonLoaded = true;
-          console.log(`✅ Loaded ${defaultTemplates.length} templates from: ${jsonFilePath}`);
+          console.log(
+            `✅ Loaded ${defaultTemplates.length} templates from: ${jsonFilePath}`,
+          );
           break;
         }
       } catch (error) {
-        console.warn(`⚠️ Could not load JSON from ${jsonFilePath}:`, error.message);
+        console.warn(
+          `⚠️ Could not load JSON from ${jsonFilePath}:`,
+          error.message,
+        );
         continue;
       }
     }
-    
+
     if (!jsonLoaded) {
-      console.warn("⚠️ Could not load JSON file from any path, using hardcoded templates");
+      console.warn(
+        "⚠️ Could not load JSON file from any path, using hardcoded templates",
+      );
       defaultTemplates = getDefaultEmailTemplates();
     }
 
     // Create templates for this channel
     const createdTemplates = [];
-    
+
     for (const template of defaultTemplates) {
       try {
         // Convert template type to public folder path (preferred) or fallback to Cloudinary URL
-        const imageUrl = convertImageUrl(template.templateType, template.imageUrl);
-        
+        const imageUrl = convertImageUrl(
+          template.templateType,
+          template.imageUrl,
+        );
+
         // Debug logging for imageUrl conversion
         if (!imageUrl || imageUrl === "") {
-          console.warn(`⚠️ Empty imageUrl for template ${template.templateType}. Original: ${template.imageUrl}`);
+          console.warn(
+            `⚠️ Empty imageUrl for template ${template.templateType}. Original: ${template.imageUrl}`,
+          );
         } else {
           console.log(`✅ Template ${template.templateType}: ${imageUrl}`);
         }
-        
+
         const templateData = {
           channel_id: channelObjectId,
           templateType: template.templateType,
@@ -314,21 +357,21 @@ const seedEmailTemplatesForChannel = async (channelId, force = false) => {
 
         const created = await EmailTemplate.createOrUpdate(
           channelObjectId,
-          templateData
+          templateData,
         );
-        
+
         createdTemplates.push(created.templateType);
       } catch (error) {
         console.error(
           `❌ Error creating template ${template.templateType}:`,
-          error.message
+          error.message,
         );
       }
     }
 
     console.log(
       `✅ Successfully seeded ${createdTemplates.length} email templates for channel ${channelObjectId}:`,
-      createdTemplates.join(", ")
+      createdTemplates.join(", "),
     );
   } catch (error) {
     console.error("❌ Error seeding email templates:", error.message);
@@ -352,7 +395,7 @@ const seedEmailTemplatesForChannels = async (channelIds) => {
     } catch (error) {
       console.error(
         `❌ Error seeding templates for channel ${channelId}:`,
-        error.message
+        error.message,
       );
       // Continue with other channels even if one fails
     }

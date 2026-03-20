@@ -158,7 +158,9 @@ const getEmailTemplateByType = async (req, res, next) => {
     // Convert relative image URL to absolute URL for frontend display
     const templateObj = template.toObject ? template.toObject() : template;
     if (templateObj.imageUrl) {
-      templateObj.imageUrl = getAbsoluteImageUrl(templateObj.imageUrl);
+      templateObj.imageUrl = templateObj.imageUrl.startsWith("/images")
+        ? templateObj.imageUrl
+        : getAbsoluteImageUrl(templateObj.imageUrl);
     }
 
     res.json({
@@ -312,6 +314,7 @@ const updateEmailTemplate = async (req, res, next) => {
         imageUrl = `/uploads/banner-images/${req.file.filename}`;
         console.log(`💾 Storing relative image path in database: ${imageUrl}`);
       } else if (req.body.imageUrl) {
+        console.log("📸 Image URL provided in body:", req.body.imageUrl);
         // If imageUrl is provided in body, convert to relative path if it's absolute
         imageUrl = getRelativeImagePath(req.body.imageUrl);
         console.log(`💾 Storing relative image path in database: ${imageUrl}`);
@@ -359,7 +362,7 @@ const updateEmailTemplate = async (req, res, next) => {
       const responseTemplate = updatedTemplate.toObject
         ? updatedTemplate.toObject()
         : updatedTemplate;
-      if (responseTemplate.imageUrl) {
+      if (!responseTemplate.imageUrl.startsWith("/images")) {
         responseTemplate.imageUrl = getAbsoluteImageUrl(
           responseTemplate.imageUrl,
         );

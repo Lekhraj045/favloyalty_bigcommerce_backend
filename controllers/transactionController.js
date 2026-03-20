@@ -1051,27 +1051,38 @@ const getPointsRedeemedStats = async (req, res, next) => {
     const storeObjectId = new mongoose.Types.ObjectId(storeId);
 
     let numericChannelId;
+    let channelDoc;
     if (
       mongoose.Types.ObjectId.isValid(channelId) &&
       String(channelId).length === 24
     ) {
-      const channel = await Channel.findOne({
+      channelDoc = await Channel.findOne({
         _id: channelId,
         store_id: storeObjectId,
       });
-      if (!channel) {
+      if (!channelDoc) {
         return res.status(404).json({
           success: false,
           message: "Channel not found",
         });
       }
-      numericChannelId = channel.channel_id;
+      numericChannelId = channelDoc.channel_id;
     } else {
       numericChannelId = parseInt(channelId, 10);
       if (isNaN(numericChannelId)) {
         return res.status(400).json({
           success: false,
           message: "Invalid channelId format",
+        });
+      }
+      channelDoc = await Channel.findOne({
+        store_id: storeObjectId,
+        channel_id: numericChannelId,
+      });
+      if (!channelDoc) {
+        return res.status(404).json({
+          success: false,
+          message: "Channel not found",
         });
       }
     }
@@ -1225,10 +1236,33 @@ const getPointsRedeemedStats = async (req, res, next) => {
       0,
     );
 
+    // Equivalent value using same Fixed Discount (storeCredit) rule as points awarded
+    let totalPointsRedeemedEquivalent = 0;
+    const redeemList = await RedeemSettings.findByStoreAndChannel(
+      storeObjectId,
+      channelDoc._id,
+    );
+    const fixedDiscount = Array.isArray(redeemList)
+      ? redeemList.find(
+          (r) =>
+            r.redeemType === "storeCredit" &&
+            r.coupon?.active &&
+            (r.coupon?.value || 0) > 0 &&
+            (r.coupon?.discountAmount ?? 0) >= 0,
+        )
+      : null;
+    if (fixedDiscount?.coupon) {
+      const value = Number(fixedDiscount.coupon.value) || 1;
+      const discountAmount = Number(fixedDiscount.coupon.discountAmount) || 0;
+      totalPointsRedeemedEquivalent =
+        Math.round((totalPointsRedeemed / value) * discountAmount * 100) / 100;
+    }
+
     res.json({
       success: true,
       data: {
         totalPointsRedeemed,
+        totalPointsRedeemedEquivalent,
         stats,
       },
     });
