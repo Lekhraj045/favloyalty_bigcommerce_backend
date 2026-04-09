@@ -9,6 +9,7 @@ const RedeemSettings = require("../models/RedeemSettings");
 const Transaction = require("../models/Transaction");
 const WidgetCustomization = require("../models/WidgetCustomization");
 const Referral = require("../models/Referral");
+const Subscription = require("../models/Subscription");
 const mongoose = require("mongoose");
 const { syncChannelScript } = require("../services/bigcommerceScriptsService");
 const { getExpiryDate } = require("../helpers/emailHelpers");
@@ -17,6 +18,7 @@ const {
   checkAndScheduleTierUpgradeEmail,
 } = require("../helpers/tierHelper");
 const queueManager = require("../queues/queueManager");
+const { awardBirthdayPointsIfEligible } = require("../helpers/birthdayRewardHelper");
 
 const TIER_NAMES = ["Silver", "Gold", "Platinum", "Diamond"];
 
@@ -425,6 +427,37 @@ async function checkAndAwardRejoin({
 }
 
 /**
+ * If today is the customer's birthday (store timezone) and they are eligible, award birthday points + email.
+ * Fire-and-forget from verifyCurrentCustomer so the widget stays fast.
+ */
+async function checkAndAwardBirthdayOnVisit({
+  customer,
+  store,
+  channel,
+  collectSettings,
+}) {
+  try {
+    const result = await awardBirthdayPointsIfEligible({
+      customer,
+      store,
+      channel,
+      collectSettings,
+      sendEmail: true,
+    });
+    if (result.awarded) {
+      console.log(
+        `[FavLoyalty Birthday] Auto-awarded ${result.pointsAwarded} points on visit for customer ${customer._id}`,
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[FavLoyalty Birthday] checkAndAwardBirthdayOnVisit:",
+      err?.message || err,
+    );
+  }
+}
+
+/**
  * Verify current customer from BigCommerce Current Customer JWT (or fallback: storeHash + channelId + customerId) and return loyalty data if in DB
  * POST body: { currentCustomerJwt?, channelId?, storeHash?, customerId? } — use JWT when available; when CORS blocks JWT, use storeHash + channelId + customerId
  */
@@ -638,6 +671,17 @@ const verifyCurrentCustomer = async (req, res, next) => {
       description: "Newsletter Subscription",
     });
 
+    const birthdayYear = new Date().getFullYear();
+    const birthdayYearStart = new Date(birthdayYear, 0, 1);
+    const birthdayYearEnd = new Date(birthdayYear, 11, 31, 23, 59, 59);
+    const existingBirthdayCelebrationTx = await Transaction.findOne({
+      customerId: customer._id,
+      store_id: store._id,
+      channel_id: channel.channel_id,
+      description: "Birthday Celebration",
+      createdAt: { $gte: birthdayYearStart, $lte: birthdayYearEnd },
+    });
+
     // Fire-and-forget: check rejoin eligibility and award points if criteria met
     // This runs in the background and never blocks the widget response
     checkAndAwardRejoin({ customer, store, channel, collectSettings }).catch(
@@ -646,6 +690,18 @@ const verifyCurrentCustomer = async (req, res, next) => {
           "[FavLoyalty Rejoin] fire-and-forget error:",
           err?.message || err,
         ),
+    );
+
+    checkAndAwardBirthdayOnVisit({
+      customer,
+      store,
+      channel,
+      collectSettings,
+    }).catch((err) =>
+      console.error(
+        "[FavLoyalty Birthday] fire-and-forget error:",
+        err?.message || err,
+      ),
     );
 
     console.log(
@@ -672,6 +728,18 @@ const verifyCurrentCustomer = async (req, res, next) => {
       referAndEarnEnabled,
       referAndEarnPoints,
       hasBirthday: !!(customer.dob != null && customer.dob !== undefined),
+      /** YYYY-MM-DD for widget display / prefill when updating DOB */
+      dob:
+        customer.dob != null
+          ? (() => {
+              const t = new Date(customer.dob).getTime();
+              return Number.isNaN(t)
+                ? undefined
+                : new Date(customer.dob).toISOString().slice(0, 10);
+            })()
+          : undefined,
+      /** True when birthday points were already awarded this calendar year (matches earn logic). */
+      birthdayRewardClaimedThisYear: !!existingBirthdayCelebrationTx,
       hasCompletedProfile: !!existingProfileTx,
       hasSubscribedNewsletter: !!existingNewsletterTx,
     });
@@ -955,29 +1023,40 @@ const getWidgetChannelSettings = async (req, res, next) => {
  */
 const checkWidgetVisibility = async (req, res, next) => {
   try {
-    const { storeId, channelId } = req.query;
+    const { storeId, storeHash, channelId } = req.query;
 
-    if (!storeId) {
+    // Support lookup by storeId (dashboard) or storeHash (widget-loader on storefront)
+    let store = null;
+    if (storeId && mongoose.Types.ObjectId.isValid(storeId)) {
+      store = await Store.findById(storeId);
+    } else if (storeHash) {
+      store = await Store.findOne({ store_hash: storeHash, is_active: true });
+    } else {
       return res.status(400).json({
         success: false,
-        message: "Store ID is required",
+        visible: false,
+        message: "storeId or storeHash is required",
       });
     }
 
-    // Validate storeId format
-    if (!mongoose.Types.ObjectId.isValid(storeId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid Store ID format",
-      });
-    }
-
-    // Get store
-    const store = await Store.findById(storeId);
     if (!store) {
       return res.status(404).json({
         success: false,
+        visible: false,
         message: "Store not found",
+      });
+    }
+
+    // Check if the store's order limit is reached — widget must be hidden when limit is hit
+    const activeSubscription = await Subscription.findActiveByStore(store._id);
+    const limitReached = activeSubscription?.limitReached || false;
+
+    if (limitReached) {
+      return res.json({
+        success: true,
+        visible: false,
+        reason: "Order limit reached — widget disabled until subscription renews",
+        limitReached: true,
       });
     }
 
@@ -1003,7 +1082,7 @@ const checkWidgetVisibility = async (req, res, next) => {
         channel.waysToRedeemCompleted &&
         channel.customiseWidgetCompleted;
 
-      // Final visibility: setup complete AND widget_visibility is true
+      // Final visibility: setup complete AND widget_visibility is true AND limit not reached
       const isVisible = isSetupComplete && channel.widget_visibility !== false;
 
       return res.json({
@@ -1014,6 +1093,7 @@ const checkWidgetVisibility = async (req, res, next) => {
           : isSetupComplete
             ? "Widget disabled for this channel"
             : "Setup not complete",
+        limitReached: false,
         setupProgress: channel.setupprogress || 0,
         pointsTierSystemCompleted: channel.pointsTierSystemCompleted || false,
         waysToEarnCompleted: channel.waysToEarnCompleted || false,
@@ -1023,7 +1103,7 @@ const checkWidgetVisibility = async (req, res, next) => {
     }
 
     // If no channelId, check if any channel has completed setup and is not disabled
-    const channels = await Channel.findByStoreId(storeId);
+    const channels = await Channel.findByStoreId(store._id.toString());
     const hasActiveChannel = channels.some(
       (channel) =>
         channel.pointsTierSystemCompleted &&
@@ -1039,6 +1119,7 @@ const checkWidgetVisibility = async (req, res, next) => {
       reason: hasActiveChannel
         ? "At least one channel is active"
         : "No active channels found",
+      limitReached: false,
       channelCount: channels.length,
     });
   } catch (error) {
@@ -1587,9 +1668,6 @@ const saveCustomerBirthday = async (req, res, next) => {
       });
     }
 
-    // Remember if customer already had DOB (so we only block double-award when they had DOB before)
-    const hadDobBefore = customer.dob != null;
-
     // 1) Update DOB in customers table
     await Customer.updateCustomer(customer._id, { dob: dobDate });
 
@@ -1598,7 +1676,6 @@ const saveCustomerBirthday = async (req, res, next) => {
       store_id: store._id,
       channel_id: channel._id,
     });
-    let pointsAwarded = 0;
     if (!collectSettings?.basic?.birthday?.active) {
       return res.json({
         success: true,
@@ -1615,108 +1692,47 @@ const saveCustomerBirthday = async (req, res, next) => {
       });
     }
 
-    const currentYear = new Date().getFullYear();
-    // 3) Avoid double-award only when customer already had DOB: if they had DOB and already received "Birthday Celebration" this year, do not award again. When they had no DOB (first time or re-set after deleting), always award so testing by delete+re-add works.
-    if (hadDobBefore) {
-      const yearStart = new Date(currentYear, 0, 1);
-      const yearEnd = new Date(currentYear, 11, 31, 23, 59, 59);
-      const existingTransaction = await Transaction.findOne({
-        customerId: customer._id,
-        store_id: store._id,
-        channel_id: channel.channel_id,
-        description: "Birthday Celebration",
-        createdAt: { $gte: yearStart, $lte: yearEnd },
+    const customerPlain =
+      typeof customer.toObject === "function"
+        ? customer.toObject()
+        : { ...customer };
+    const result = await awardBirthdayPointsIfEligible({
+      customer: { ...customerPlain, dob: dobDate },
+      store,
+      channel,
+      collectSettings,
+      sendEmail: true,
+    });
+
+    if (result.awarded) {
+      return res.json({
+        success: true,
+        message: "Birthday saved and points awarded",
+        pointsAwarded: result.pointsAwarded,
       });
-      if (existingTransaction) {
-        return res.json({
-          success: true,
-          message: "Birthday saved; points already awarded this year",
-          pointsAwarded: 0,
-        });
-      }
     }
 
-    // 4) Award points and create transaction
-    const pointModel = await Point.findOne({
-      store_id: store._id,
-      channel_id: channel._id,
-    });
-    const expiresInDays = pointModel?.expiriesInDays ?? null;
-    const { expiryDate } = getExpiryDate(expiresInDays);
-
-    await Customer.addTransaction(customer._id, {
-      customerId: customer._id,
-      store_id: store._id,
-      channel_id: channel.channel_id,
-      bcCustomerId: customer.bcCustomerId,
-      type: "earn",
-      transactionCategory: "other",
-      points: birthdayPoints,
-      description: "Birthday Celebration",
-      status: "completed",
-      expiresAt: expiryDate,
-      source: "birthday",
-      metadata: { birthdayYear: currentYear },
-    });
-
-    // Recalculate customer tier; if birthday points moved them to a higher tier, update it
-    if (pointModel) {
-      try {
-        // Capture previous tier before recalculation
-        const previousTier = customer.currentTier
-          ? { ...(customer.currentTier.toObject?.() || customer.currentTier) }
-          : null;
-
-        const tierResult = await calculateAndUpdateCustomerTier(
-          customer,
-          pointModel,
-        );
-        if (tierResult.tierUpdated) {
-          console.log(
-            "[FavLoyalty] saveCustomerBirthday: tier updated after birthday points:",
-            tierResult.message,
-          );
-
-          // Schedule tier upgrade email if tier was upgraded
-          await checkAndScheduleTierUpgradeEmail(
-            tierResult,
-            previousTier,
-            customer._id,
-            store._id,
-            channel._id,
-            pointModel,
-          );
-        }
-      } catch (tierError) {
-        console.warn(
-          "[FavLoyalty] saveCustomerBirthday: tier recalculation failed:",
-          tierError.message,
-        );
-      }
+    if (result.reason === "not_birthday_today") {
+      return res.json({
+        success: true,
+        message:
+          "Birthday saved; points are awarded when you visit on your birthday",
+        pointsAwarded: 0,
+      });
     }
 
-    // Schedule birthday email to be sent in a few seconds (fast response to widget; email via Agenda job)
-    try {
-      await queueManager.addBirthdayEmailJob(
-        {
-          customerId: customer._id.toString(),
-          storeId: store._id.toString(),
-          channelId: channel._id.toString(),
-          birthdayPoints,
-        },
-        { delay: "in 5 seconds" },
-      );
-    } catch (emailJobError) {
-      console.warn(
-        "[FavLoyalty] saveCustomerBirthday: failed to schedule birthday email job:",
-        emailJobError.message,
-      );
+    if (result.reason === "already_awarded_this_year") {
+      return res.json({
+        success: true,
+        message: "Birthday saved; points already awarded this year",
+        pointsAwarded: 0,
+      });
     }
 
     return res.json({
       success: true,
-      message: "Birthday saved and points awarded",
-      pointsAwarded: birthdayPoints,
+      message: "Birthday saved",
+      pointsAwarded: 0,
     });
   } catch (err) {
     console.error("Error saving customer birthday:", err);

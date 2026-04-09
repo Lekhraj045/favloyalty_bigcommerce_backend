@@ -183,8 +183,7 @@ const fetchChannelList = async (
         ) {
           const excludedChannels = databaseChannels.filter(
             (channel) =>
-              channel.status !== "active" ||
-              channel.platform !== "bigcommerce",
+              channel.status !== "active" || channel.platform !== "bigcommerce",
           );
 
           if (excludedChannels.length > 0) {
@@ -259,8 +258,7 @@ const fetchChannelList = async (
       const formattedChannels = databaseChannels
         .filter(
           (channel) =>
-            channel.status === "active" &&
-            channel.platform === "bigcommerce",
+            channel.status === "active" && channel.platform === "bigcommerce",
         )
         .map((channel) => ({
           id: channel._id.toString(),
@@ -280,6 +278,7 @@ const fetchChannelList = async (
               : true,
           script_id: channel.script_id ?? null,
           default_currency: channel.default_currency ?? null,
+          site_url: channel.site_url ?? null,
         }));
 
       console.log(
@@ -310,6 +309,7 @@ const fetchChannelList = async (
         customiseWidgetCompleted: false,
         script_id: null,
         default_currency: channel.default_currency ?? null,
+        site_url: channel.site_url ?? null,
       }));
 
     console.log(

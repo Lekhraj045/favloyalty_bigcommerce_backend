@@ -58,6 +58,7 @@ const getChannels = async (req, res, next) => {
             : true,
         script_id: channel.script_id ?? null,
         default_currency: channel.default_currency ?? null,
+        site_url: channel.site_url ?? null,
       }));
 
     console.log(

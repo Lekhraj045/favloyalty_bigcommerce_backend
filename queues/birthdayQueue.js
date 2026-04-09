@@ -4,8 +4,6 @@ const mongoose = require("mongoose");
 
 // Import required models and modules
 const Customer = require("../models/Customer");
-const CollectSettings = require("../models/CollectSettings");
-const Transaction = require("../models/Transaction");
 const Point = require("../models/Point");
 const Store = require("../models/Store");
 const Channel = require("../models/Channel");
@@ -20,6 +18,7 @@ const {
   sendRejoiningEmail,
   getExpiryDate,
 } = require("../helpers/emailHelpers");
+const { processAllStoresBirthdayPoints } = require("../helpers/birthdayRewardHelper");
 
 // ============================================================
 // Initialize Agenda with MongoDB
@@ -179,297 +178,33 @@ async function initializeAgenda() {
 
 async function processBirthdayPoints(job, jobData = {}) {
   const startTime = Date.now();
-  let processedCount = 0;
-  let failedCount = 0;
-  let errors = [];
 
   try {
-    console.log("🔄 Processing birthday points job");
+    console.log("🔄 Processing birthday points job (store timezone + shared helper)");
 
-    // Use provided date or current date
     const targetDate = jobData.targetDate
       ? new Date(jobData.targetDate)
       : new Date();
-    const month = targetDate.getMonth() + 1; // 1-12
-    const day = targetDate.getDate(); // 1-31
-    const currentYear = targetDate.getFullYear();
 
-    console.log(
-      `📅 Processing birthday points for ${month}/${day}/${currentYear}`,
-    );
-
-    // Find customers with birthdays today
-    // Note: DOB should be stored in customer profile - checking profile fields
-    // For now, we'll query customers and filter by birthday
-    // TODO: Add dob field to Customer profile schema if not present
-    const allCustomers = await Customer.find({}).populate("store_id");
-
-    const birthdayCustomers = [];
-
-    for (const customer of allCustomers) {
-      // Check if customer has DOB - this might be stored in profile or as a separate field
-      // For now, check if there's any date field we can use
-      // In the future, add a dob field to the Customer model
-      let dob = null;
-
-      // Check various possible locations for DOB
-      if (customer.profile?.dob) {
-        dob = customer.profile.dob;
-      } else if (customer.dob) {
-        dob = customer.dob;
-      } else if (customer.dateOfBirth) {
-        dob = customer.dateOfBirth;
-      }
-
-      if (!dob) continue;
-
-      try {
-        const dobDate = new Date(dob);
-        if (isNaN(dobDate.getTime())) continue; // Invalid date
-
-        const dobMonth = dobDate.getMonth() + 1;
-        const dobDay = dobDate.getDate();
-
-        if (dobMonth === month && dobDay === day) {
-          birthdayCustomers.push(customer);
-        }
-      } catch (dateError) {
-        console.warn(
-          `⚠️  Invalid DOB for customer ${customer._id}:`,
-          dateError,
-        );
-        continue;
-      }
-    }
-
-    const totalCustomers = birthdayCustomers.length;
-    console.log(
-      `🎂 Found ${totalCustomers} customers with birthdays on ${month}/${day}`,
-    );
-
-    // If no birthday customers, complete the job early
-    if (totalCustomers === 0) {
-      const result = {
-        message: "No birthday customers found for today",
-        skipped: true,
-        processDate: targetDate.toISOString().split("T")[0],
-        totalCustomers: 0,
-      };
-      return result;
-    }
-
-    // Group customers by store and channel
-    const customersByStoreChannel = {};
-
-    for (const customer of birthdayCustomers) {
-      const key = `${customer.store_id}_${customer.channel_id}`;
-      if (!customersByStoreChannel[key]) {
-        customersByStoreChannel[key] = [];
-      }
-      customersByStoreChannel[key].push(customer);
-    }
-
-    // Process each store/channel combination
-    for (const [key, customers] of Object.entries(customersByStoreChannel)) {
-      const [storeId, numericChannelId] = key.split("_");
-
-      try {
-        const store = await Store.findById(storeId);
-        if (!store) {
-          console.warn(`⚠️  Store not found: ${storeId}`);
-          continue;
-        }
-
-        // Find Channel by numeric channel_id
-        const channel = await Channel.findOne({
-          store_id: storeId,
-          channel_id: parseInt(numericChannelId),
-        });
-
-        if (!channel) {
-          console.warn(
-            `⚠️  Channel not found: store ${storeId}, channel ${numericChannelId}`,
-          );
-          continue;
-        }
-
-        // Get CollectSettings
-        const collectSettings = await CollectSettings.findOne({
-          store_id: storeId,
-          channel_id: channel._id, // Use Channel ObjectId
-        });
-
-        if (!collectSettings) {
-          console.warn(
-            `⚠️  CollectSettings not found for store ${storeId}, channel ${channel._id}`,
-          );
-          continue;
-        }
-
-        // Check if birthday points are active
-        if (!collectSettings.basic?.birthday?.active) {
-          console.log(
-            `⏭️  Birthday points not active for store ${storeId}, channel ${numericChannelId}`,
-          );
-          continue;
-        }
-
-        // Get point model
-        const pointModel = await Point.findOne({
-          store_id: storeId,
-          channel_id: channel._id, // Use Channel ObjectId
-        });
-
-        if (!pointModel) {
-          console.warn(
-            `⚠️  Point model not found for store ${storeId}, channel ${channel._id}`,
-          );
-          continue;
-        }
-
-        const birthdayPoints = collectSettings.basic.birthday.point || 0;
-
-        if (birthdayPoints <= 0) {
-          console.log(
-            `⏭️  No birthday points configured for store ${storeId}, channel ${numericChannelId}`,
-          );
-          continue;
-        }
-
-        // Process each customer
-        for (const customer of customers) {
-          try {
-            // Check for existing birthday transaction this year
-            const yearStart = new Date(currentYear, 0, 1);
-            const yearEnd = new Date(currentYear, 11, 31, 23, 59, 59);
-
-            const existingTransaction = await Transaction.findOne({
-              customerId: customer._id,
-              store_id: storeId,
-              channel_id: parseInt(numericChannelId),
-              description: "Birthday Celebration",
-              createdAt: {
-                $gte: yearStart,
-                $lte: yearEnd,
-              },
-            });
-
-            if (existingTransaction) {
-              // Already received birthday points this year
-              console.log(
-                `⏭️  Customer ${customer._id} already received birthday points this year`,
-              );
-              processedCount++;
-              continue;
-            }
-
-            // Award birthday points
-            customer.points = (customer.points || 0) + birthdayPoints;
-            customer.pointsEarned =
-              (customer.pointsEarned || 0) + birthdayPoints;
-
-            // Calculate expiry date
-            const { currentDate, expiryDate } = getExpiryDate(
-              pointModel.expiriesInDays,
-            );
-
-            // Create transaction
-            const transaction = new Transaction({
-              customerId: customer._id,
-              store_id: storeId,
-              channel_id: parseInt(numericChannelId),
-              bcCustomerId: customer.bcCustomerId,
-              type: "earn",
-              transactionCategory: "other",
-              points: birthdayPoints,
-              description: "Birthday Celebration",
-              status: "completed",
-              expiresAt: expiryDate,
-              source: "birthday",
-              metadata: {
-                birthdayYear: currentYear,
-              },
-            });
-
-            // Save transaction and customer
-            await Promise.all([transaction.save(), customer.save()]);
-
-            // Send birthday email
-            try {
-              await sendBirthdayEmail(
-                customer,
-                store,
-                pointModel,
-                birthdayPoints,
-                channel._id, // Pass Channel ObjectId
-              );
-            } catch (emailError) {
-              console.error(
-                `⚠️  Error sending birthday email to customer ${customer._id}:`,
-                emailError,
-              );
-              // Don't fail the job if email fails
-            }
-
-            processedCount++;
-            console.log(
-              `✅ Processed birthday for customer ${customer._id}: ${birthdayPoints} points`,
-            );
-          } catch (customerError) {
-            console.error(
-              `❌ Error processing customer ${customer._id}:`,
-              customerError,
-            );
-            failedCount++;
-            errors.push({
-              customerId: customer._id,
-              error: customerError.message,
-              type: "customer_processing",
-            });
-            continue;
-          }
-        }
-      } catch (storeChannelError) {
-        console.error(
-          `❌ Error processing store/channel ${key}:`,
-          storeChannelError,
-        );
-        failedCount += customers.length;
-        errors.push({
-          storeId,
-          channelId: numericChannelId,
-          error: storeChannelError.message,
-          type: "store_channel_processing",
-        });
-        continue;
-      }
-    }
+    const summary = await processAllStoresBirthdayPoints();
 
     const duration = Date.now() - startTime;
     const result = {
       message: "Birthday points processed successfully",
       processDate: targetDate.toISOString().split("T")[0],
-      totalCustomers,
-      processedCount,
-      failedCount,
+      storesScanned: summary.stores,
+      candidatesProcessed: summary.processed,
+      awardedCount: summary.awarded,
+      failedCount: summary.failed,
       duration,
-      errors: errors.length > 0 ? errors : undefined,
     };
 
-    console.log(`✅ Birthday points processing completed:`, {
-      processDate: targetDate.toISOString().split("T")[0],
-      totalCustomers,
-      processedCount,
-      failedCount,
-      duration: `${Math.round(duration / 1000)}s`,
-    });
+    console.log("✅ Birthday points processing completed:", result);
 
     return result;
   } catch (error) {
-    const duration = Date.now() - startTime;
     console.error("❌ Error in birthday points processing:", error);
-
-    throw error; // Re-throw the error so Agenda knows the job failed
+    throw error;
   }
 }
 

@@ -468,18 +468,19 @@ const processOrderStatusUpdatedWebhook = async (store, webhookPayload) => {
 
     // Only consider channel's default currency: if order currency doesn't match, skip
     const channelCurrency = channel.default_currency || null;
+
     const orderCurrency = order.currency_code || null;
-    if (channelCurrency && orderCurrency && orderCurrency !== channelCurrency) {
-      console.log(
-        `⏭️ Skipping order ${orderId}: order currency ${orderCurrency} does not match channel default ${channelCurrency}`,
-      );
-      return {
-        processed: true,
-        orderId,
-        newStatus: newStatusId,
-        skipped: "currency_mismatch",
-      };
-    }
+    // if (channelCurrency && orderCurrency && orderCurrency !== channelCurrency) {
+    //   console.log(
+    //     `⏭️ Skipping order ${orderId}: order currency ${orderCurrency} does not match channel default ${channelCurrency}`,
+    //   );
+    //   return {
+    //     processed: true,
+    //     orderId,
+    //     newStatus: newStatusId,
+    //     skipped: "currency_mismatch",
+    //   };
+    // }
 
     // Order total in channel currency (total including tax = amount spent)
     const orderTotal =
@@ -652,11 +653,17 @@ const processOrderStatusUpdatedWebhook = async (store, webhookPayload) => {
         if (updatedCustomer) {
           // Capture previous tier before recalculation
           const previousTier = updatedCustomer.currentTier
-            ? { ...updatedCustomer.currentTier.toObject?.() || updatedCustomer.currentTier }
+            ? {
+                ...(updatedCustomer.currentTier.toObject?.() ||
+                  updatedCustomer.currentTier),
+              }
             : null;
-          
-          const tierResult = await calculateAndUpdateCustomerTier(updatedCustomer, pointModelForTier);
-          
+
+          const tierResult = await calculateAndUpdateCustomerTier(
+            updatedCustomer,
+            pointModelForTier,
+          );
+
           // Schedule tier upgrade email if tier was upgraded
           if (tierResult.tierUpdated) {
             await checkAndScheduleTierUpgradeEmail(
@@ -1095,11 +1102,17 @@ const processCustomerCreatedWebhook = async (store, webhookPayload) => {
           if (updatedCustomer) {
             // Capture previous tier before recalculation
             const previousTier = updatedCustomer.currentTier
-              ? { ...updatedCustomer.currentTier.toObject?.() || updatedCustomer.currentTier }
+              ? {
+                  ...(updatedCustomer.currentTier.toObject?.() ||
+                    updatedCustomer.currentTier),
+                }
               : null;
-            
-            const tierResult = await calculateAndUpdateCustomerTier(updatedCustomer, point);
-            
+
+            const tierResult = await calculateAndUpdateCustomerTier(
+              updatedCustomer,
+              point,
+            );
+
             // Schedule tier upgrade email if tier was upgraded
             if (tierResult.tierUpdated) {
               await checkAndScheduleTierUpgradeEmail(
