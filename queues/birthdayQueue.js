@@ -255,6 +255,7 @@ async function sendBirthdayEmailJob(jobData = {}) {
       pointModel || { pointName: "Points" },
       Number(birthdayPoints),
       channel._id,
+      channel.site_url
     );
     if (sent) {
       console.log(
@@ -321,6 +322,7 @@ async function sendProfileCompletionEmailJob(jobData = {}) {
       pointModel || { pointName: "Points" },
       Number(profileCompletionPoints),
       channel._id,
+      channel.site_url
     );
     if (sent) {
       console.log(
@@ -382,6 +384,7 @@ async function sendReferAndEarnEmailJob(jobData = {}) {
       pointModel || { pointName: "Points" },
       Number(referralPoints),
       channel._id,
+      channel.site_url
     );
     if (sent) {
       console.log(
@@ -496,6 +499,7 @@ async function sendNewsletterSubscriptionEmailJob(jobData = {}) {
       pointModel || { pointName: "Points" },
       Number(newsletterPoints),
       channel._id,
+      channel.site_url
     );
     if (sent) {
       console.log(
@@ -566,6 +570,7 @@ async function sendTierUpgradeEmailJob(jobData = {}) {
       pointModel,
       newTierName,
       channel._id,
+      channel.site_url
     );
     if (sent) {
       console.log(
@@ -624,6 +629,7 @@ async function sendSignUpEmailJob(jobData = {}) {
       pointModel || { pointName: "Points" },
       Number(signupPoints),
       channel._id,
+      channel.site_url
     );
     if (sent) {
       console.log(
@@ -1249,18 +1255,10 @@ async function sendRejoiningEmailJob(jobData = {}) {
       pointModel || { pointName: "Points" },
       Number(rejoiningPoints),
       channel._id,
+      channel.site_url
     );
-    if (sent) {
-      console.log(
-        `✅ Rejoining email sent to customer ${customer._id} (${customer.email})`,
-      );
-    }
-  } catch (err) {
-    console.error(
-      "[BirthdayQueue] send rejoining email job failed:",
-      err.message,
-    );
-  }
+    if (sent) {console.log(`✅ Rejoining email sent to customer ${customer._id} (${customer.email})`)}
+  } catch (err) {console.error("[BirthdayQueue] send rejoining email job failed:", err.message)}
 }
 
 // Schedule one-off "send rejoining email to customer" (e.g. 5 seconds after rejoin points are awarded)

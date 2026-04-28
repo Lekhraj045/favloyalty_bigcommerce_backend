@@ -13,6 +13,7 @@ const {
 const {
   createOrUpdateWebhook,
 } = require("../services/bigcommerceWebhookService");
+const { sendEmail } = require("../services/emailService");
 
 /** Scopes we subscribe to on install so BigCommerce sends webhooks to our /api/webhooks/receive */
 const WEBHOOK_SCOPES = ["store/order/statusUpdated", "store/customer/created"];
@@ -112,10 +113,21 @@ const handleAuthCallback = async (req, res) => {
         },
       },
     );
-
+    
     const { access_token, user, context: storeContext } = tokenResponse.data;
     const storeHash = storeContext.split("/")[1];
 
+    const { data } = await axios.get(
+      `https://api.bigcommerce.com/stores/${storeHash}/v2/store`,
+      {
+        headers: {
+          "X-Auth-Token": access_token,
+          Accept: "application/json",
+        },
+      },
+    );
+
+    console.log("🔄 Store data:", data);
     console.log("✅ Access token received for store:", storeHash);
 
     // Save store data and get the store ID
@@ -125,6 +137,9 @@ const handleAuthCallback = async (req, res) => {
       accessToken: access_token,
       scope: scope,
       email: user?.email || null,
+      storeName: data?.name || null,
+      storeDomain: data?.domain || null,
+      storeUrl: data?.url || null,
     });
 
     console.log("✅ Store data saved successfully:", {
@@ -173,6 +188,27 @@ const handleAuthCallback = async (req, res) => {
 
     // Subscribe to webhooks (order status, customer created) on install
     await subscribeWebhooksOnInstall(storeHash, access_token);
+
+    try {
+      const to = "support@favloyalty.com";
+      const from = process.env.EMAIL_FROM || "no-reply@favloyalty.com"; // pick what you use
+      const subject = `New BigCommerce install: ${storeHash}`;
+      const html = `
+        <h2>New BigCommerce installation</h2>
+        <p><b>Store hash:</b> ${storeHash}</p>
+        <p><b>Store name:</b> ${data?.name || "N/A"}</p>
+        <p><b>Store domain:</b> ${data?.domain || "N/A"}</p>
+        <p><b>Store DB id:</b> ${storeId.toString?.() ?? storeId}</p>
+        <p><b>User email:</b> ${user?.email || "N/A"}</p>
+        <p><b>Scope:</b> ${scope}</p>
+        <p><b>Channel count:</b> ${channelList?.length || 0}</p>
+        <p><b>Time:</b> ${new Date().toISOString()}</p>
+      `;
+      await sendEmail(to, from, subject, html, "FavLoyalty");
+    } catch (e) {
+      // Non-blocking: do not fail install if email fails
+      console.warn("⚠️ Failed to send install notification email:", e.message);
+    }
 
     // Build response data
     const resData = {

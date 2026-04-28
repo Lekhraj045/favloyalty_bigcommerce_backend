@@ -52,7 +52,7 @@ async function initializeAgenda() {
 
     // Use the database object directly from Mongoose connection
     const nativeDb = mongoose.connection.db;
-    
+
     if (!nativeDb) {
       throw new Error("MongoDB database object is not available");
     }
@@ -217,8 +217,19 @@ async function processMonthlyPoints(job, jobData = {}) {
         for (const customer of customers) {
           try {
             // Check if notification already sent this month
-            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-            const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
+            const monthStart = new Date(
+              today.getFullYear(),
+              today.getMonth(),
+              1,
+            );
+            const monthEnd = new Date(
+              today.getFullYear(),
+              today.getMonth() + 1,
+              0,
+              23,
+              59,
+              59,
+            );
 
             // Check for existing monthly email notification (we can use a transaction or separate notification)
             // For now, we'll send to all customers - you can add notification tracking later
@@ -229,7 +240,8 @@ async function processMonthlyPoints(job, jobData = {}) {
                 customer,
                 store,
                 pointModel,
-                channel._id // Pass Channel ObjectId
+                channel._id, // Pass Channel ObjectId
+                channel.site_url,
               );
 
               if (emailSent) {
@@ -403,7 +415,7 @@ async function setupRecurringMonthlyJob() {
     try {
       // Check if job already exists
       const existingRecurringJobs = await agenda.jobs({ name: "monthly points recurring" });
-      
+
       if (existingRecurringJobs && existingRecurringJobs.length > 0) {
         // Update existing job
         const job = existingRecurringJobs[0];

@@ -84,7 +84,7 @@ storeSchema.index({ plan: 1 });
 
 // Static methods
 storeSchema.statics.create = async function (storeData) {
-  const { storeHash, accessToken, scope, user, email } = storeData;
+  const { storeHash, accessToken, scope, user, email, storeName, storeDomain, storeUrl } = storeData;
 
   console.log("🔄 Attempting to create/update store:", {
     storeHash,
@@ -97,10 +97,13 @@ storeSchema.statics.create = async function (storeData) {
 
     if (existingStore) {
       // Update existing store
-      console.log("🔄 Store exists, updating...");
+      console.log("🔄 Store exists, updating...", storeName, storeDomain, storeUrl, email);
       existingStore.access_token = accessToken;
       existingStore.scope = scope;
       existingStore.email = email || user?.email || null;
+      existingStore.store_name = storeName || null;
+      existingStore.store_domain = storeDomain || null;
+      existingStore.store_url = storeUrl || null;
       existingStore.is_active = true;
       existingStore.uninstalled_at = null;
       await existingStore.save();
@@ -150,6 +153,9 @@ storeSchema.statics.create = async function (storeData) {
         access_token: accessToken,
         scope: scope,
         email: email || user?.email || null,
+        store_name: storeName || null,
+        store_domain: storeDomain || null,
+        store_url: storeUrl || null,
         is_active: true,
         installed_at: new Date(),
         plan: "free",

@@ -1037,6 +1037,7 @@ async function sendEventEmailJob(job, jobData) {
       pointPerEvent,
       eventName,
       channel._id,
+      channel.site_url || "",
     );
 
     if (emailSent && transaction) {

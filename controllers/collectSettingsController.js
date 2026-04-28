@@ -13,15 +13,7 @@ const { processEventPoints } = require("../queues/eventQueue");
 const saveCollectSettings = async (req, res, next) => {
   try {
     const { storeId, channelId } = req.body;
-    let {
-      basic,
-      event,
-      referAndEarn,
-      socialMedia,
-      goal,
-      rejoin,
-      emailSetting,
-    } = req.body;
+    let {basic, event, referAndEarn, socialMedia, goal, rejoin, emailSetting} = req.body;
 
     // Validate required fields
     if (!storeId || !channelId) {
@@ -31,12 +23,8 @@ const saveCollectSettings = async (req, res, next) => {
       });
     }
 
-    // Convert string IDs to ObjectIds
-    const storeObjectId = new mongoose.Types.ObjectId(storeId);
-    const channelObjectId = new mongoose.Types.ObjectId(channelId);
-
     // Verify store and channel exist
-    const store = await Store.findById(storeObjectId);
+    const store = await Store.findById(storeId);
     if (!store) {
       return res.status(404).json({
         success: false,
@@ -44,7 +32,7 @@ const saveCollectSettings = async (req, res, next) => {
       });
     }
 
-    const channel = await Channel.findById(channelObjectId);
+    const channel = await Channel.findById(channelId);
     if (!channel) {
       return res.status(404).json({
         success: false,
@@ -52,101 +40,24 @@ const saveCollectSettings = async (req, res, next) => {
       });
     }
 
-    // Parse JSON strings if they exist
-    if (typeof basic === "string") {
-      try {
-        basic = JSON.parse(basic);
-      } catch (e) {
-        basic = {};
-      }
-    }
-
-    if (typeof event === "string") {
-      try {
-        event = JSON.parse(event);
-      } catch (e) {
-        event = {};
-      }
-    }
-
-    if (typeof referAndEarn === "string") {
-      try {
-        referAndEarn = JSON.parse(referAndEarn);
-      } catch (e) {
-        referAndEarn = {};
-      }
-    }
-
-    if (typeof socialMedia === "string") {
-      try {
-        socialMedia = JSON.parse(socialMedia);
-      } catch (e) {
-        socialMedia = {};
-      }
-    }
-
-    if (typeof goal === "string") {
-      try {
-        goal = JSON.parse(goal);
-      } catch (e) {
-        goal = {};
-      }
-    }
-
-    if (typeof rejoin === "string") {
-      try {
-        rejoin = JSON.parse(rejoin);
-      } catch (e) {
-        rejoin = {};
-      }
-    }
-
-    if (typeof emailSetting === "string") {
-      try {
-        emailSetting = JSON.parse(emailSetting);
-      } catch (e) {
-        emailSetting = {};
-      }
-    }
-
     // Prepare settings data
+    // only add those fields to the update object that are present in the request body
     const settingsData = {
-      store_id: storeObjectId,
-      channel_id: channelObjectId,
+      store_id: storeId,
+      channel_id: channelId,
+      ...(basic && { basic }),
+      ...(event && { event }),
+      ...(referAndEarn && { referAndEarn }),
+      ...(socialMedia && { socialMedia }),
+      ...(goal && { goal }),
+      ...(rejoin && { rejoin }),
+      ...(emailSetting && { emailSetting }),
     };
-
-    if (basic) {
-      settingsData.basic = basic;
-    }
-
-    if (event) {
-      settingsData.event = event;
-    }
-
-    if (referAndEarn) {
-      settingsData.referAndEarn = referAndEarn;
-    }
-
-    if (socialMedia) {
-      settingsData.socialMedia = socialMedia;
-    }
-
-    if (goal) {
-      settingsData.goal = goal;
-    }
-
-    if (rejoin) {
-      settingsData.rejoin = rejoin;
-    }
-
-    if (emailSetting) {
-      settingsData.emailSetting = emailSetting;
-    }
 
     // Use createOrUpdate method from the model
     const savedSettings = await CollectSettings.createOrUpdate(
-      storeObjectId,
-      channelObjectId,
+      storeId,
+      channelId,
       settingsData,
     );
 
@@ -155,13 +66,9 @@ const saveCollectSettings = async (req, res, next) => {
     if (event && savedSettings.event?.events) {
       try {
         // Ensure event.active is set to true if there are events
-        if (
-          savedSettings.event.events.length > 0 &&
-          !savedSettings.event.active
-        ) {
+        if (savedSettings.event.events.length > 0 && !savedSettings.event.active) {
           savedSettings.event.active = true;
           await savedSettings.save();
-          console.log("✅ Set event.active to true for saved events");
         }
 
         const today = new Date();
@@ -177,7 +84,7 @@ const saveCollectSettings = async (req, res, next) => {
         // Check each event
         for (const eventItem of savedSettings.event.events) {
           if (!eventItem.eventDate) continue;
-
+          
           const eventDate = new Date(eventItem.eventDate);
           const eventDateOnly = new Date(
             eventDate.getFullYear(),
@@ -277,10 +184,7 @@ const getCollectSettings = async (req, res, next) => {
     const { storeId, channelId } = req.query;
 
     if (!storeId || !channelId) {
-      return res.status(400).json({
-        success: false,
-        message: "Store ID and Channel ID are required",
-      });
+      return res.status(400).json({success: false, message: "Store ID and Channel ID are required"});
     }
 
     const storeObjectId = new mongoose.Types.ObjectId(storeId);

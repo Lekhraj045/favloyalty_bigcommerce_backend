@@ -322,33 +322,22 @@ const savePoints = async (req, res, next) => {
 const updatePoints = async (req, res, next) => {
   uploadLogo(req, res, async (err) => {
     if (err) {
-      return res.status(400).json({
-        success: false,
-        message: err.message,
-      });
+      return res.status(400).json({ success: false, message: err.message });
     }
 
     try {
       const { pointId } = req.params;
       const { pointName, expiry, tierStatus } = req.body;
-      let { expiriesInDays, logo, customLogo, customPointName, tier } =
-        req.body;
+      let { expiriesInDays, logo, customLogo, customPointName, tier } = req.body;
 
       if (!pointId) {
-        return res.status(400).json({
-          success: false,
-          message: "Point ID is required",
-        });
+        return res.status(400).json({ success: false, message: "Point ID is required" });
       }
 
-      const pointObjectId = new mongoose.Types.ObjectId(pointId);
-      const point = await Point.findById(pointObjectId);
+      const point = await Point.findById(pointId);
 
       if (!point) {
-        return res.status(404).json({
-          success: false,
-          message: "Point configuration not found",
-        });
+        return res.status(404).json({success: false, message: "Point configuration not found"});
       }
 
       // Parse JSON strings if they exist
@@ -387,10 +376,7 @@ const updatePoints = async (req, res, next) => {
       // Handle uploaded logo file
       if (req.file) {
         const logoUrl = `/uploads/logos/${req.file.filename}`;
-        customLogo = {
-          src: logoUrl,
-          name: req.file.filename,
-        };
+        customLogo = {src: logoUrl, name: req.file.filename};
       }
 
       // When user selects a predefined logo (point-icon1..6), clear customLogo so widget shows the selected icon, not a previous upload
@@ -402,38 +388,21 @@ const updatePoints = async (req, res, next) => {
 
       // Update point data
       if (pointName) point.pointName = pointName;
-      if (expiry !== undefined) {
-        point.expiry = expiry === "true" || expiry === true;
-      }
-      if (tierStatus !== undefined) {
-        point.tierStatus = tierStatus === "true" || tierStatus === true;
-      }
+      if (expiry !== undefined) {point.expiry = expiry === "true" || expiry === true}
+      if (tierStatus !== undefined) {point.tierStatus = tierStatus === "true" || tierStatus === true}
 
-      if (point.expiry && expiriesInDays) {
-        point.expiriesInDays = parseInt(expiriesInDays);
-      } else if (!point.expiry) {
-        point.expiriesInDays = null;
-      }
+      if (point.expiry && expiriesInDays) {point.expiriesInDays = parseInt(expiriesInDays)}
+      else if (!point.expiry) {point.expiriesInDays = null}
 
-      if (logo) {
-        point.logo = logo;
-      }
+      if (logo) {point.logo = logo}
 
-      if (customLogo) {
-        point.customLogo = customLogo;
-      } else if (isPredefinedLogo) {
-        point.customLogo = null;
-      }
+      if (customLogo) {point.customLogo = customLogo}
+      else if (isPredefinedLogo) {point.customLogo = null}
 
-      if (customPointName && Array.isArray(customPointName)) {
-        point.customPointName = customPointName;
-      }
+      if (customPointName && Array.isArray(customPointName)) {point.customPointName = customPointName}
 
-      if (point.tierStatus && tier && Array.isArray(tier)) {
-        point.tier = tier;
-      } else if (!point.tierStatus) {
-        point.tier = [];
-      }
+      if (point.tierStatus && tier && Array.isArray(tier)) {point.tier = tier}
+      else if (!point.tierStatus) {point.tier = []}
 
       const updatedPoint = await point.save();
 

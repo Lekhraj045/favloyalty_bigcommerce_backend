@@ -252,7 +252,8 @@ async function processTransactionExpiration(job, jobData = {}) {
                 store,
                 pointModel,
                 pointsToDeduct,
-                channel._id // Pass Channel ObjectId
+                channel._id, // Pass Channel ObjectId
+                channel.site_url
               );
             } catch (emailError) {
               console.error(
@@ -280,7 +281,8 @@ async function processTransactionExpiration(job, jobData = {}) {
                 store,
                 transaction,
                 daysUntilExpiry,
-                channel._id // Pass Channel ObjectId
+                channel._id, // Pass Channel ObjectId
+                channel.site_url
               );
             } catch (emailError) {
               console.error(

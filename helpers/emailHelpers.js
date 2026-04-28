@@ -40,6 +40,7 @@ async function sendBirthdayEmail(
   pointModel,
   totalPoints,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     const collectSettings = await CollectSettings.findOne({
@@ -83,7 +84,7 @@ async function sendBirthdayEmail(
     // Render email using HTML template files
     const birthdayTemplate = renderEmailTemplate("birthday", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       birthday_points: totalPoints,
       point_name: pointModel.pointName,
       banner_image: bannerHtml,
@@ -114,6 +115,7 @@ async function sendProfileCompletionEmail(
   pointModel,
   totalPoints,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     const collectSettings = await CollectSettings.findOne({
@@ -156,7 +158,7 @@ async function sendProfileCompletionEmail(
 
     const profileTemplate = renderEmailTemplate("profileCompletion", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       profile_completion_points: totalPoints,
       point_name: (pointModel && pointModel.pointName) || "Points",
       banner_image: bannerHtml,
@@ -187,6 +189,7 @@ async function sendNewsletterSubscriptionEmail(
   pointModel,
   totalPoints,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     const collectSettings = await CollectSettings.findOne({
@@ -228,7 +231,7 @@ async function sendNewsletterSubscriptionEmail(
 
     const newsletterEmailHtml = renderEmailTemplate("newsletter", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       newsletter_points: totalPoints,
       point_name: (pointModel && pointModel.pointName) || "Points",
       banner_image: bannerHtml,
@@ -259,6 +262,7 @@ async function sendSignUpEmail(
   pointModel,
   totalPoints,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     const collectSettings = await CollectSettings.findOne({
@@ -299,7 +303,7 @@ async function sendSignUpEmail(
 
     const signUpEmailHtml = renderEmailTemplate("signUp", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       signup_points: totalPoints,
       point_name: (pointModel && pointModel.pointName) || "Points",
       banner_image: bannerHtml,
@@ -331,6 +335,7 @@ async function sendFestivalEmail(
   totalPoints,
   eventName,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     console.log(
@@ -399,7 +404,7 @@ async function sendFestivalEmail(
     // Render email using HTML template files
     const festivalTemplate = renderEmailTemplate("festival", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       event_points: totalPoints,
       point_name: pointModel.pointName,
       event_name: eventName,
@@ -443,6 +448,7 @@ async function sendReferAndEarnEmail(
   pointModel,
   totalPoints,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     const collectSettings = await CollectSettings.findOne({
@@ -482,7 +488,7 @@ async function sendReferAndEarnEmail(
 
     const referEmailHtml = renderEmailTemplate("referAndEarn", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       referral_points: totalPoints,
       point_name: (pointModel && pointModel.pointName) || "Points",
       banner_image: bannerHtml,
@@ -513,6 +519,7 @@ async function sendPointsExpirationEmail(
   pointModel,
   pointsDeducted,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     const collectSettings = await CollectSettings.findOne({
@@ -558,7 +565,7 @@ async function sendPointsExpirationEmail(
     // Render email using HTML template files
     const pointsExpireTemplate = renderEmailTemplate("pointsExpire", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       expired_points: pointsDeducted,
       remaining_points: customer.points || 0,
       point_name: pointModel.pointName,
@@ -590,6 +597,7 @@ async function sendCouponExpirationWarningEmail(
   transaction,
   daysRemaining,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     const collectSettings = await CollectSettings.findOne({
@@ -643,7 +651,7 @@ async function sendCouponExpirationWarningEmail(
     // Render email using HTML template files
     const couponExpireTemplate = renderEmailTemplate("couponExpire", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       coupon_code: transaction.metadata?.couponCode || "N/A",
       coupon_value: transaction.metadata?.couponValue || "N/A",
       coupon_expiry_days: daysRemaining,
@@ -670,7 +678,13 @@ async function sendCouponExpirationWarningEmail(
 /**
  * Send monthly points statement email
  */
-async function sendMonthlyPointsEmail(customer, store, pointModel, channelId) {
+async function sendMonthlyPointsEmail(
+  customer,
+  store,
+  pointModel,
+  channelId,
+  channelSiteUrl,
+) {
   try {
     const collectSettings = await CollectSettings.findOne({
       store_id: store._id,
@@ -759,7 +773,7 @@ async function sendMonthlyPointsEmail(customer, store, pointModel, channelId) {
     // Render email using HTML template files
     const monthlyStatementTemplate = renderEmailTemplate("monthlyPoints", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       point_name: pointModel.pointName,
       current_balance: customer.points || 0,
       points_earned: pointsEarned,
@@ -795,6 +809,7 @@ async function sendReferralInvitationEmail(
   referredEmail,
   store,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     const collectSettings = await CollectSettings.findOne({
@@ -931,6 +946,7 @@ async function sendTierUpgradeEmail(
   pointModel,
   newTierName,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     // CRITICAL: Only send if tier system is enabled
@@ -990,7 +1006,7 @@ async function sendTierUpgradeEmail(
     // Render email using HTML template files
     const tierUpgradeEmailHtml = renderEmailTemplate("upgradedTrial", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       tier_name: newTierName,
       point_name: (pointModel && pointModel.pointName) || "Points",
       banner_image: bannerHtml,
@@ -1010,7 +1026,10 @@ async function sendTierUpgradeEmail(
     );
     return true;
   } catch (error) {
-    console.error("[TierUpgradeEmail] Error sending tier upgrade email:", error);
+    console.error(
+      "[TierUpgradeEmail] Error sending tier upgrade email:",
+      error,
+    );
     return false;
   }
 }
@@ -1024,6 +1043,7 @@ async function sendRejoiningEmail(
   pointModel,
   rejoiningPoints,
   channelId,
+  channelSiteUrl,
 ) {
   try {
     const collectSettings = await CollectSettings.findOne({
@@ -1032,7 +1052,9 @@ async function sendRejoiningEmail(
     });
 
     if (!collectSettings) {
-      console.warn("[RejoiningEmail] CollectSettings not found for rejoining email");
+      console.warn(
+        "[RejoiningEmail] CollectSettings not found for rejoining email",
+      );
       return false;
     }
 
@@ -1067,7 +1089,7 @@ async function sendRejoiningEmail(
     // Render email using HTML template files
     const rejoiningTemplate = renderEmailTemplate("rejoining", {
       customer_name: customerName,
-      shop_link: store.store_url || store.store_domain || "",
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
       rejoining_points: rejoiningPoints,
       point_name: pointModel.pointName || "Points",
       banner_image: bannerHtml,
