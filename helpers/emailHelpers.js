@@ -878,10 +878,9 @@ async function sendMonthlyPointsEmail(
       points_expiring: pointsExpiring,
       expiry_date: nextMonthEnd.toLocaleDateString(),
       tierStatus: pointModel.tierStatus || false,
-      tier_name: tierName,
-      tier_multiplier: tierMultiplier,
       banner_image: bannerHtml,
       store_name: store.store_name || "Store",
+      current_tier_name: tierName,
     });
 
     await sendEmail(
