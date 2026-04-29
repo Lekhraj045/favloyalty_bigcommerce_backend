@@ -350,11 +350,17 @@ async function addMonthlyPointsJob(jobData = {}, options = {}) {
     const jobId = `monthlyPoints-${baseDate.getFullYear()}-${baseDate.getMonth() + 1}`;
 
     // Check if job already exists for this month
-    const existingJobs = await agenda.jobs({
-      name: "process monthly points",
-      "data.uniqueId": jobId,
-      nextRunAt: { $ne: null },
-    });
+    let existingJobs = [];
+    try {
+      existingJobs =
+        (await agenda.jobs({
+          name: "process monthly points",
+          "data.uniqueId": jobId,
+          nextRunAt: { $ne: null },
+        })) || [];
+    } catch (e) {
+      existingJobs = [];
+    }
 
     if (existingJobs.length > 0) {
       console.log(
@@ -365,15 +371,35 @@ async function addMonthlyPointsJob(jobData = {}, options = {}) {
 
     // Schedule the job
     const delay = options.delay || "in 30 seconds";
-    const job = await agenda.schedule(delay, "process monthly points", {
-      ...jobData,
-      uniqueId: jobId,
-      scheduledDate: baseDate.toISOString(),
-    });
+    try {
+      const job = await agenda.schedule(delay, "process monthly points", {
+        ...jobData,
+        uniqueId: jobId,
+        scheduledDate: baseDate.toISOString(),
+      });
 
-    console.log(`📅 Monthly points job scheduled: ${job.attrs._id}`);
+      console.log(`📅 Monthly points job scheduled: ${job.attrs._id}`);
 
-    return job;
+      return job;
+    } catch (scheduleErr) {
+      // Fallback: the insert might have succeeded but returning the created job failed.
+      try {
+        const afterJobs =
+          (await agenda.jobs({
+            name: "process monthly points",
+            "data.uniqueId": jobId,
+          })) || [];
+        if (afterJobs.length > 0) {
+          console.warn(
+            "⚠️ Monthly points schedule errored but job exists; returning existing job. Error:",
+            scheduleErr?.message,
+          );
+          return afterJobs[0];
+        }
+      } catch (_) {}
+
+      throw scheduleErr;
+    }
   } catch (error) {
     console.error("❌ Error adding monthly points job:", error);
     throw error;
