@@ -125,9 +125,7 @@ async function processMonthlyPoints(job, jobData = {}) {
   try {
     console.log("🔄 Processing monthly points job");
 
-    const today = jobData?.targetDate
-      ? new Date(jobData.targetDate)
-      : new Date();
+    const today = new Date();
 
     // Check if it's the 28th day of the month
     if (today.getDate() !== 28) {
@@ -244,7 +242,6 @@ async function processMonthlyPoints(job, jobData = {}) {
                 pointModel,
                 channel._id, // Pass Channel ObjectId
                 channel.site_url,
-                today,
               );
 
               if (emailSent) {
@@ -344,23 +341,15 @@ async function addMonthlyPointsJob(jobData = {}, options = {}) {
       await initializeAgenda();
     }
 
-    const baseDate = jobData?.targetDate
-      ? new Date(jobData.targetDate)
-      : new Date();
-    const jobId = `monthlyPoints-${baseDate.getFullYear()}-${baseDate.getMonth() + 1}`;
+    const today = new Date();
+    const jobId = `monthlyPoints-${today.getFullYear()}-${today.getMonth() + 1}`;
 
     // Check if job already exists for this month
-    let existingJobs = [];
-    try {
-      existingJobs =
-        (await agenda.jobs({
-          name: "process monthly points",
-          "data.uniqueId": jobId,
-          nextRunAt: { $ne: null },
-        })) || [];
-    } catch (e) {
-      existingJobs = [];
-    }
+    const existingJobs = await agenda.jobs({
+      name: "process monthly points",
+      "data.uniqueId": jobId,
+      nextRunAt: { $ne: null },
+    });
 
     if (existingJobs.length > 0) {
       console.log(
@@ -371,35 +360,15 @@ async function addMonthlyPointsJob(jobData = {}, options = {}) {
 
     // Schedule the job
     const delay = options.delay || "in 30 seconds";
-    try {
-      const job = await agenda.schedule(delay, "process monthly points", {
-        ...jobData,
-        uniqueId: jobId,
-        scheduledDate: baseDate.toISOString(),
-      });
+    const job = await agenda.schedule(delay, "process monthly points", {
+      ...jobData,
+      uniqueId: jobId,
+      scheduledDate: today.toISOString(),
+    });
 
-      console.log(`📅 Monthly points job scheduled: ${job.attrs._id}`);
+    console.log(`📅 Monthly points job scheduled: ${job.attrs._id}`);
 
-      return job;
-    } catch (scheduleErr) {
-      // Fallback: the insert might have succeeded but returning the created job failed.
-      try {
-        const afterJobs =
-          (await agenda.jobs({
-            name: "process monthly points",
-            "data.uniqueId": jobId,
-          })) || [];
-        if (afterJobs.length > 0) {
-          console.warn(
-            "⚠️ Monthly points schedule errored but job exists; returning existing job. Error:",
-            scheduleErr?.message,
-          );
-          return afterJobs[0];
-        }
-      } catch (_) {}
-
-      throw scheduleErr;
-    }
+    return job;
   } catch (error) {
     console.error("❌ Error adding monthly points job:", error);
     throw error;
@@ -434,10 +403,7 @@ async function setupRecurringMonthlyJob() {
         console.log(
           "🔄 Triggering monthly points job from recurring schedule"
         );
-        await addMonthlyPointsJob({
-          triggeredBy: "recurring",
-          targetDate: today.toISOString(),
-        });
+        await addMonthlyPointsJob({ triggeredBy: "recurring" });
       } else {
         console.log(
           `⏭️  Skipping monthly points - today is ${today.getDate()}, not 28th`

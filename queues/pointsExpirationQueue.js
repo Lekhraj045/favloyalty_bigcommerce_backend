@@ -141,53 +141,26 @@ async function processTransactionExpiration(job, jobData = {}) {
       `📅 Processing transaction expiration for date: ${today.toDateString()}`
     );
 
-    const mode = (jobData.mode || "all").toString().toLowerCase();
-
-    let expiringTransactionsQuery;
-    if (mode === "points") {
-      // Only points expiration emails (earn transactions expiring today)
-      expiringTransactionsQuery = {
-        expiresAt: { $lte: today },
-        status: "completed",
-        type: "earn",
-      };
-    } else if (mode === "coupon") {
-      // Only coupon expiration warnings (redeem transactions expiring within 0-2 days)
-      expiringTransactionsQuery = {
-        expiresAt: {
-          $gte: today,
-          $lte: twoDaysFromNow,
+    // Find transactions expiring today (for points) and in 2 days (for coupons)
+    const expiringTransactions = await Transaction.find({
+      $or: [
+        // Points transactions expiring today
+        {
+          expiresAt: { $lte: today },
+          status: "completed",
+          type: "earn",
         },
-        status: "completed",
-        type: "redeem",
-      };
-    } else {
-      // Default: both points and coupon expiration notifications
-      expiringTransactionsQuery = {
-        $or: [
-          // Points transactions expiring today
-          {
-            expiresAt: { $lte: today },
-            status: "completed",
-            type: "earn",
+        // Redeem transactions expiring in 2 days
+        {
+          expiresAt: {
+            $gte: today,
+            $lte: twoDaysFromNow,
           },
-          // Redeem transactions expiring in 2 days
-          {
-            expiresAt: {
-              $gte: today,
-              $lte: twoDaysFromNow,
-            },
-            status: "completed",
-            type: "redeem",
-          },
-        ],
-      };
-    }
-
-    // Find transactions based on mode
-    const expiringTransactions = await Transaction.find(expiringTransactionsQuery)
-      .populate("customerId")
-      .populate("store_id");
+          status: "completed",
+          type: "redeem",
+        },
+      ],
+    }).populate("customerId").populate("store_id");
 
     const totalTransactions = expiringTransactions.length;
     console.log(`📊 Found ${totalTransactions} expiring transactions`);
