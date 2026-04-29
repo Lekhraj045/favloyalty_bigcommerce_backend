@@ -841,6 +841,32 @@ async function sendMonthlyPointsEmail(
       ? `${customer.firstName} ${customer.lastName || ""}`.trim()
       : customer.email;
 
+    // Resolve current tier name (matches tierHelper sorting by pointRequired)
+    let tierName = null;
+    let tierMultiplier = null;
+    try {
+      const tierIndex = customer?.currentTier?.tierIndex;
+      if (
+        pointModel?.tierStatus === true &&
+        typeof tierIndex === "number" &&
+        Array.isArray(pointModel?.tier) &&
+        pointModel.tier.length > 0
+      ) {
+        const sortedTiers = [...pointModel.tier].sort(
+          (a, b) => (a?.pointRequired || 0) - (b?.pointRequired || 0),
+        );
+        tierName =
+          sortedTiers[tierIndex]?.tierName || `Tier ${Number(tierIndex) + 1}`;
+        tierMultiplier =
+          typeof customer?.currentTier?.multiplier === "number"
+            ? customer.currentTier.multiplier
+            : null;
+      }
+    } catch (_) {
+      tierName = null;
+      tierMultiplier = null;
+    }
+
     // Render email using HTML template files
     const monthlyStatementTemplate = renderEmailTemplate("monthlyPoints", {
       customer_name: customerName,
@@ -852,6 +878,8 @@ async function sendMonthlyPointsEmail(
       points_expiring: pointsExpiring,
       expiry_date: nextMonthEnd.toLocaleDateString(),
       tierStatus: pointModel.tierStatus || false,
+      tier_name: tierName,
+      tier_multiplier: tierMultiplier,
       banner_image: bannerHtml,
       store_name: store.store_name || "Store",
     });
