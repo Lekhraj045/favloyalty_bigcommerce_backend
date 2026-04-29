@@ -4,6 +4,7 @@ const authRoutes = require("./authRoutes");
 const loadRoutes = require("./loadRoutes");
 const uninstallRoutes = require("./uninstallRoutes");
 const debugRoutes = require("./debugRoutes");
+const manualEmailRoutes = require("./manualEmailRoutes");
 const webhookRoutes = require("./webhookRoutes");
 
 module.exports = (app) => {
@@ -13,5 +14,6 @@ module.exports = (app) => {
   app.use("/load", loadRoutes);
   app.use("/uninstall", uninstallRoutes);
   app.use("/debug", debugRoutes);
+  app.use("/debug/manual-emails", manualEmailRoutes);
   app.use("/api/webhooks", webhookRoutes);
 };

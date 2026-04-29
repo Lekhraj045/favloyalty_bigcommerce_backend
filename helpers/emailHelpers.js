@@ -755,6 +755,7 @@ async function sendMonthlyPointsEmail(
   pointModel,
   channelId,
   channelSiteUrl,
+  targetDate,
 ) {
   try {
     const collectSettings = await CollectSettings.findOne({
@@ -788,15 +789,18 @@ async function sendMonthlyPointsEmail(
       return false;
     }
 
+    // Get transactions relative to the statement date (usually the 28th)
+    const baseDate = targetDate ? new Date(targetDate) : new Date();
+    baseDate.setHours(0, 0, 0, 0);
+
     // Get transactions from last month
     const Transaction = require("../models/Transaction");
-    const lastMonthStart = new Date();
-    lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
-    lastMonthStart.setDate(1);
+    const lastMonthStart = new Date(baseDate);
+    lastMonthStart.setMonth(lastMonthStart.getMonth() - 1, 1);
     lastMonthStart.setHours(0, 0, 0, 0);
 
-    const lastMonthEnd = new Date();
-    lastMonthEnd.setDate(0);
+    const lastMonthEnd = new Date(baseDate);
+    lastMonthEnd.setMonth(lastMonthEnd.getMonth(), 0); // last day of previous month
     lastMonthEnd.setHours(23, 59, 59, 999);
 
     const transactions = await Transaction.find({
@@ -816,13 +820,14 @@ async function sendMonthlyPointsEmail(
       .reduce((sum, t) => sum + Math.abs(t.points || 0), 0);
 
     // Calculate expiring points (next month)
-    const nextMonthEnd = new Date();
+    const nextMonthEnd = new Date(baseDate);
     nextMonthEnd.setMonth(nextMonthEnd.getMonth() + 2, 0);
+    nextMonthEnd.setHours(23, 59, 59, 999);
 
     const expiringTransactions = await Transaction.find({
       customerId: customer._id,
       expiresAt: {
-        $gte: new Date(),
+        $gte: baseDate,
         $lte: nextMonthEnd,
       },
       status: "completed",

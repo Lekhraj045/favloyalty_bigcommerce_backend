@@ -125,7 +125,9 @@ async function processMonthlyPoints(job, jobData = {}) {
   try {
     console.log("🔄 Processing monthly points job");
 
-    const today = new Date();
+    const today = jobData?.targetDate
+      ? new Date(jobData.targetDate)
+      : new Date();
 
     // Check if it's the 28th day of the month
     if (today.getDate() !== 28) {
@@ -242,6 +244,7 @@ async function processMonthlyPoints(job, jobData = {}) {
                 pointModel,
                 channel._id, // Pass Channel ObjectId
                 channel.site_url,
+                today,
               );
 
               if (emailSent) {
@@ -341,8 +344,10 @@ async function addMonthlyPointsJob(jobData = {}, options = {}) {
       await initializeAgenda();
     }
 
-    const today = new Date();
-    const jobId = `monthlyPoints-${today.getFullYear()}-${today.getMonth() + 1}`;
+    const baseDate = jobData?.targetDate
+      ? new Date(jobData.targetDate)
+      : new Date();
+    const jobId = `monthlyPoints-${baseDate.getFullYear()}-${baseDate.getMonth() + 1}`;
 
     // Check if job already exists for this month
     const existingJobs = await agenda.jobs({
@@ -363,7 +368,7 @@ async function addMonthlyPointsJob(jobData = {}, options = {}) {
     const job = await agenda.schedule(delay, "process monthly points", {
       ...jobData,
       uniqueId: jobId,
-      scheduledDate: today.toISOString(),
+      scheduledDate: baseDate.toISOString(),
     });
 
     console.log(`📅 Monthly points job scheduled: ${job.attrs._id}`);
@@ -403,7 +408,10 @@ async function setupRecurringMonthlyJob() {
         console.log(
           "🔄 Triggering monthly points job from recurring schedule"
         );
-        await addMonthlyPointsJob({ triggeredBy: "recurring" });
+        await addMonthlyPointsJob({
+          triggeredBy: "recurring",
+          targetDate: today.toISOString(),
+        });
       } else {
         console.log(
           `⏭️  Skipping monthly points - today is ${today.getDate()}, not 28th`
