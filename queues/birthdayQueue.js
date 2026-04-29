@@ -12,6 +12,7 @@ const {
   sendProfileCompletionEmail,
   sendNewsletterSubscriptionEmail,
   sendSignUpEmail,
+  sendPurchaseEmail,
   sendReferAndEarnEmail,
   sendReferralInvitationEmail,
   sendTierUpgradeEmail,
@@ -111,6 +112,12 @@ async function initializeAgenda() {
     agenda.define("send sign up email to customer", async (job) => {
       const data = job.attrs.data || {};
       return await sendSignUpEmailJob(data);
+    });
+
+    // One-off job: send purchase email to customer (scheduled after order completion points are awarded)
+    agenda.define("send purchase email to customer", async (job) => {
+      const data = job.attrs.data || {};
+      return await sendPurchaseEmailJob(data);
     });
 
     // One-off job: send Refer & Earn reward email to customer (scheduled after referral points are awarded)
@@ -644,6 +651,65 @@ async function sendSignUpEmailJob(jobData = {}) {
   }
 }
 
+// Send Purchase Email Job (one-off, scheduled after webhook awards order completion points)
+async function sendPurchaseEmailJob(jobData = {}) {
+  const { customerId, storeId, channelId, purchasePoints } = jobData;
+  if (!customerId || !storeId || !channelId || purchasePoints == null) {
+    console.warn(
+      "[BirthdayQueue] send purchase email job: missing required data",
+    );
+    return;
+  }
+  try {
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      console.warn(
+        "[BirthdayQueue] send purchase email job: customer not found",
+        customerId,
+      );
+      return;
+    }
+    const store = await Store.findById(storeId);
+    if (!store) {
+      console.warn(
+        "[BirthdayQueue] send purchase email job: store not found",
+        storeId,
+      );
+      return;
+    }
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      console.warn(
+        "[BirthdayQueue] send purchase email job: channel not found",
+        channelId,
+      );
+      return;
+    }
+    const pointModel = await Point.findOne({
+      store_id: store._id,
+      channel_id: channel._id,
+    });
+    const sent = await sendPurchaseEmail(
+      customer,
+      store,
+      pointModel || { pointName: "Points" },
+      Number(purchasePoints),
+      channel._id,
+      channel.site_url,
+    );
+    if (sent) {
+      console.log(
+        `✅ Purchase email sent to customer ${customer._id} (${customer.email})`,
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[BirthdayQueue] send purchase email job failed:",
+      err.message,
+    );
+  }
+}
+
 // ============================================================
 // Add Job Function with Deduplication
 // ============================================================
@@ -1030,6 +1096,53 @@ async function addSignUpEmailJob(data = {}, options = {}) {
   }
 }
 
+// Schedule one-off "send purchase email to customer" (e.g. 5 seconds after order completion points are awarded)
+async function addPurchaseEmailJob(data = {}, options = {}) {
+  const delayMs = 5 * 1000;
+  const scheduleTime = new Date(Date.now() + delayMs);
+  const jobData = {
+    customerId: data.customerId,
+    storeId: data.storeId,
+    channelId: data.channelId,
+    purchasePoints: data.purchasePoints,
+  };
+  try {
+    if (!agenda) await initializeAgenda();
+    const job = await agenda.schedule(
+      scheduleTime,
+      "send purchase email to customer",
+      jobData,
+    );
+    console.log(
+      "📧 Purchase email job scheduled: " +
+        job.attrs._id +
+        " for customer " +
+        data.customerId +
+        " (in 5 seconds)",
+    );
+    return job;
+  } catch (agendaError) {
+    console.warn(
+      "⚠️ Agenda scheduling failed for purchase email, using setTimeout fallback:",
+      agendaError.message,
+    );
+    setTimeout(function () {
+      sendPurchaseEmailJob(jobData).catch(function (err) {
+        console.error(
+          "[BirthdayQueue] setTimeout fallback purchase email failed:",
+          err.message,
+        );
+      });
+    }, delayMs);
+    console.log(
+      "📧 Purchase email scheduled via setTimeout for customer " +
+        data.customerId +
+        " (in 5 seconds)",
+    );
+    return null;
+  }
+}
+
 // Schedule one-off \"send refer & earn email to customer\" (e.g. 5 seconds after referral points are awarded)
 async function addReferAndEarnEmailJob(data = {}, options = {}) {
   const delayMs = 5 * 1000;
@@ -1308,6 +1421,7 @@ module.exports = {
   addProfileCompletionEmailJob,
   addNewsletterSubscriptionEmailJob,
   addSignUpEmailJob,
+  addPurchaseEmailJob,
   addReferAndEarnEmailJob,
   addReferralInvitationEmailJob,
   addTierUpgradeEmailJob,

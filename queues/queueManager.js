@@ -17,6 +17,7 @@ const {
   addProfileCompletionEmailJob: addProfileCompletionEmailJobToQueue,
   addNewsletterSubscriptionEmailJob: addNewsletterSubscriptionEmailJobToQueue,
   addSignUpEmailJob: addSignUpEmailJobToQueue,
+  addPurchaseEmailJob: addPurchaseEmailJobToQueue,
   addReferAndEarnEmailJob: addReferAndEarnEmailJobToQueue,
   addReferralInvitationEmailJob: addReferralInvitationEmailJobToQueue,
   addTierUpgradeEmailJob: addTierUpgradeEmailJobToQueue,
@@ -66,6 +67,7 @@ class QueueManager {
         addNewsletterSubscriptionEmailJob:
           addNewsletterSubscriptionEmailJobToQueue,
         addSignUpEmailJob: addSignUpEmailJobToQueue,
+        addPurchaseEmailJob: addPurchaseEmailJobToQueue,
         addReferAndEarnEmailJob: addReferAndEarnEmailJobToQueue,
         addReferralInvitationEmailJob: addReferralInvitationEmailJobToQueue,
         addTierUpgradeEmailJob: addTierUpgradeEmailJobToQueue,
@@ -358,6 +360,25 @@ class QueueManager {
       return job;
     } catch (error) {
       console.error("❌ Error scheduling sign-up email job:", error);
+      throw error;
+    }
+  }
+
+  // Schedule one-off purchase email (only when Purchase email is enabled for channel)
+  async addPurchaseEmailJob(data = {}, options = {}) {
+    try {
+      if (!this.initializedQueues.has("birthday")) {
+        await this.agendaQueues.birthday.initialize();
+        this.initializedQueues.add("birthday");
+      }
+      const job = await this.agendaQueues.birthday.addPurchaseEmailJob(
+        data,
+        options,
+      );
+      console.log(`✅ Scheduled purchase email job: ${job?.attrs?._id}`);
+      return job;
+    } catch (error) {
+      console.error("❌ Error scheduling purchase email job:", error);
       throw error;
     }
   }

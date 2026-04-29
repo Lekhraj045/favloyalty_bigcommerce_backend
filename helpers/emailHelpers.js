@@ -511,6 +511,77 @@ async function sendReferAndEarnEmail(
 }
 
 /**
+ * Send purchase reward email to customer (only if emailSetting.purchase.enable is true).
+ */
+async function sendPurchaseEmail(
+  customer,
+  store,
+  pointModel,
+  purchasePoints,
+  channelId,
+  channelSiteUrl,
+) {
+  try {
+    const collectSettings = await CollectSettings.findOne({
+      store_id: store._id,
+      channel_id: channelId,
+    });
+
+    if (!collectSettings) {
+      console.warn("CollectSettings not found for purchase email");
+      return false;
+    }
+
+    const emailEnabled =
+      collectSettings.emailSetting &&
+      (collectSettings.emailSetting.all?.enable === true ||
+        collectSettings.emailSetting.purchase?.enable === true);
+    if (!emailEnabled) {
+      return false;
+    }
+
+    const purchaseTemplate = await EmailTemplate.findByChannelAndType(
+      channelId,
+      "purchase",
+    );
+
+    if (!purchaseTemplate) {
+      console.warn("Purchase email template not found for channel");
+      return false;
+    }
+
+    const bannerHtml = createBannerImageHtml(purchaseTemplate.imageUrl);
+
+    const customerName =
+      customer.firstName && customer.lastName
+        ? `${customer.firstName} ${customer.lastName}`.trim()
+        : customer.firstName || customer.email;
+
+    const purchaseEmailHtml = renderEmailTemplate("purchase", {
+      customer_name: customerName,
+      shop_link: channelSiteUrl || store.store_url || store.store_domain || "",
+      purchase_points: Number(purchasePoints) || 0,
+      point_name: (pointModel && pointModel.pointName) || "Points",
+      banner_image: bannerHtml,
+      store_name: store.store_name || "Store",
+    });
+
+    await sendEmail(
+      customer.email,
+      process.env.EMAIL_FROM || "support@favloyalty.com",
+      purchaseTemplate.heading || "Thanks for your purchase!",
+      purchaseEmailHtml,
+      store.store_name || "FavLoyalty",
+    );
+
+    return true;
+  } catch (error) {
+    console.error("Error sending purchase email:", error);
+    return false;
+  }
+}
+
+/**
  * Send points expiration email
  */
 async function sendPointsExpirationEmail(
@@ -1124,6 +1195,7 @@ module.exports = {
   sendPointsExpirationEmail,
   sendCouponExpirationWarningEmail,
   sendMonthlyPointsEmail,
+  sendPurchaseEmail,
   sendReferAndEarnEmail,
   sendReferralInvitationEmail,
   sendTierUpgradeEmail,

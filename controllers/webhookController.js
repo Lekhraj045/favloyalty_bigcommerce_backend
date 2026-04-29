@@ -688,6 +688,21 @@ const processOrderStatusUpdatedWebhook = async (store, webhookPayload) => {
       `✅ Order ${orderId} completed: awarded ${pointsToAward} points to customer ${customer._id} (channel ${orderChannelId})`,
     );
 
+    // Schedule purchase reward email (only sends if emailSetting.purchase is enabled)
+    try {
+      await queueManager.addPurchaseEmailJob({
+        customerId: customer._id.toString(),
+        storeId: store._id.toString(),
+        channelId: channel._id.toString(),
+        purchasePoints: pointsToAward,
+      });
+    } catch (emailJobError) {
+      console.warn(
+        "[FavLoyalty] processOrderStatusUpdatedWebhook: failed to schedule purchase email job:",
+        emailJobError?.message,
+      );
+    }
+
     // Refer & Earn: award referrer when referred customer completes first order
     try {
       if (collectSettings?.referAndEarn?.active === true) {

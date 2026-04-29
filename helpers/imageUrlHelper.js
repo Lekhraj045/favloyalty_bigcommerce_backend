@@ -22,7 +22,7 @@ function getAbsoluteImageUrl(imageUrl) {
   // Get base URL from environment variables
   const backendUrl = process.env.BACKEND_URL || process.env.SERVER_URL_PATH;
   const frontendUrl = process.env.FRONTEND_BASE_URL;
-  const baseUrl = backendUrl || frontendUrl;
+  const baseUrl = imageUrl.startsWith("/images") ? frontendUrl : backendUrl;
 
   if (!baseUrl) {
     console.warn(
