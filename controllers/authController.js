@@ -14,6 +14,7 @@ const {
   createOrUpdateWebhook,
 } = require("../services/bigcommerceWebhookService");
 const { sendEmail } = require("../services/emailService");
+const { sendInstallNotificationEmail } = require("../helpers/emailHelpers");
 
 /** Scopes we subscribe to on install so BigCommerce sends webhooks to our /api/webhooks/receive */
 const WEBHOOK_SCOPES = ["store/order/statusUpdated", "store/customer/created"];
@@ -81,16 +82,13 @@ const login = async (req, res, next) => {
 };
 
 const handleAuthCallback = async (req, res) => {
-  console.log("📥 Auth callback received");
-  console.log("Query params:", req.query);
+  console.log("📥 Auth callback received with params:", req.query);
 
   const { code, scope, context } = req.query;
 
   if (!code || !scope || !context) {
     console.error("❌ Missing required parameters");
-    return res
-      .status(400)
-      .send("Missing required parameters: code, scope, or context");
+    return res.status(400).send("Missing required parameters: code, scope, or context");
   }
 
   try {
@@ -107,11 +105,7 @@ const handleAuthCallback = async (req, res) => {
         redirect_uri: process.env.AUTH_CALLBACK,
         context: context,
       },
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
+      {headers: {"Content-Type": "application/json"}},
     );
     
     const { access_token, user, context: storeContext } = tokenResponse.data;
@@ -127,12 +121,11 @@ const handleAuthCallback = async (req, res) => {
       },
     );
 
-    console.log("🔄 Store data:", data);
     console.log("✅ Access token received for store:", storeHash);
 
-    // Save store data and get the store ID
+    //1. Save store data and get the store ID
     console.log("💾 Saving store data to database...");
-    const storeId = await Store.create({
+    const storeDetails = {
       storeHash: storeHash,
       accessToken: access_token,
       scope: scope,
@@ -140,117 +133,54 @@ const handleAuthCallback = async (req, res) => {
       storeName: data?.name || null,
       storeDomain: data?.domain || null,
       storeUrl: data?.url || null,
-    });
+    };
+    const storeId = await Store.create(storeDetails);
 
-    console.log("✅ Store data saved successfully:", {
-      storeId,
-      storeHash,
-      email: user?.email,
-    });
+    console.log("✅ Store data saved successfully:", storeDetails);
 
     // Validate storeId before proceeding
     if (!storeId) {
-      // Changed from storeId === 0 check
       console.error("❌ Store ID is invalid:", storeId);
-      throw new Error(
-        "Failed to retrieve valid store ID after saving store data",
-      );
+      throw new Error("Failed to retrieve valid store ID after saving store data");
     }
 
-    // Fetch channel list from BigCommerce and sync with database
-    // During installation, only fetch active channels
+    //2. Fetch active channel list from BigCommerce and sync with database
     console.log("🔄 Fetching channel list from BigCommerce API...");
-    const channelList = await fetchChannelList(
-      access_token,
-      storeHash,
-      storeId,
-      true, // filterActiveOnly = true for installation flow
-    );
+    const channelList = await fetchChannelList(access_token,storeHash,storeId,true); // filterActiveOnly = true for installation flow
+    console.log(`✅ Fetched ${channelList?.length || 0} channels from BigCommerce API`);
 
-    console.log(
-      `📋 Fetched ${channelList?.length || 0} channels from BigCommerce API`,
-    );
-
-    // Channels are now automatically synced in fetchChannelList
-    // Get saved channels count for response
-    let savedChannels = [];
-    try {
-      const existingChannels = await Channel.findByStoreId(storeId);
-      savedChannels = existingChannels || [];
-      console.log(
-        `💾 Database now contains ${savedChannels.length} channels for store: ${storeHash}`,
-      );
-    } catch (channelError) {
-      console.error("❌ Error retrieving saved channels:", {
-        message: channelError.message,
-      });
-    }
-
-    // Subscribe to webhooks (order status, customer created) on install
+    //3. Subscribe to webhooks (order status, customer created) on install
     await subscribeWebhooksOnInstall(storeHash, access_token);
 
-    try {
-      const to = "support@favloyalty.com";
-      const from = process.env.EMAIL_FROM || "no-reply@favloyalty.com"; // pick what you use
-      const subject = `New BigCommerce install: ${storeHash}`;
-      const html = `
-        <h2>New BigCommerce installation</h2>
-        <p><b>Store hash:</b> ${storeHash}</p>
-        <p><b>Store name:</b> ${data?.name || "N/A"}</p>
-        <p><b>Store domain:</b> ${data?.domain || "N/A"}</p>
-        <p><b>Store DB id:</b> ${storeId.toString?.() ?? storeId}</p>
-        <p><b>User email:</b> ${user?.email || "N/A"}</p>
-        <p><b>Scope:</b> ${scope}</p>
-        <p><b>Channel count:</b> ${channelList?.length || 0}</p>
-        <p><b>Time:</b> ${new Date().toISOString()}</p>
-      `;
-      await sendEmail(to, from, subject, html, "FavLoyalty");
-    } catch (e) {
-      // Non-blocking: do not fail install if email fails
-      console.warn("⚠️ Failed to send install notification email:", e.message);
-    }
-
-    // Build response data
-    const resData = {
-      user_id: user?.id,
-      shop: storeHash,
-      store_email: user?.email,
-      api_token: access_token,
-      domain: tokenResponse.data?.domain || null,
-      manage_services: tokenResponse.data?.manage_services || [],
-      channel_list: channelList || [],
-      channel_count: channelList?.length || 0,
-      saved_channel_count: savedChannels.length,
-    };
+    //4. Send install notification email TO support@favloyalty.com
+    await sendInstallNotificationEmail({
+      ...storeDetails,
+      userEmail: user.email,
+    });
 
     console.log("✅ Auth callback completed successfully");
 
-    // Get the store object to generate session token
     const store = await Store.findByHash(storeHash);
-    if (!store) {
-      throw new Error("Store not found after creation");
-    }
+    if (!store) {throw new Error("Store not found after creation")}
 
-    // Generate session token for immediate authentication
+    //5. Generate session token for immediate authentication
     const sessionToken = buildSessionToken(store);
     const sessionExpiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
 
-    // Redirect to frontend install page which will handle authentication and redirect to setup
+    //6. Redirect to frontend install page which will handle authentication and redirect to setup
     const redirectUrl = new URL("install", FRONTEND_BASE_URL);
     redirectUrl.searchParams.set("storeHash", storeHash);
     redirectUrl.searchParams.set("storeId", storeId.toString());
     redirectUrl.searchParams.set("sessionToken", sessionToken);
-    redirectUrl.searchParams.set(
-      "sessionExpiresAt",
-      sessionExpiresAt.toString(),
-    );
+    redirectUrl.searchParams.set("sessionExpiresAt", sessionExpiresAt.toString());
+
     if (user?.email) {
       redirectUrl.searchParams.set("email", user.email);
     }
 
     console.log("🔁 Redirecting to setup page:", redirectUrl.toString());
 
-    // Return HTML page that redirects the parent window (BigCommerce shows this in an iframe)
+    //7. Return HTML page that redirects the parent window (BigCommerce shows this in an iframe)
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -284,11 +214,7 @@ const handleAuthCallback = async (req, res) => {
       </html>
     `);
   } catch (error) {
-    console.error("❌ OAuth Error:", {
-      message: error.message,
-      response: error.response?.data,
-      stack: error.stack,
-    });
+    console.error("❌ OAuth Error:", {message: error.message,response: error.response?.data,stack: error.stack})
 
     res.status(500).json({
       status_code: 500,
@@ -300,106 +226,20 @@ const handleAuthCallback = async (req, res) => {
   }
 };
 
-// Uninstall handler (optional - for when app is uninstalled)
-const handleUninstall = async (req, res) => {
-  try {
-    const signedPayload =
-      req.body.signed_payload_jwt || req.body.signed_payload;
-
-    if (!signedPayload) {
-      return res.status(400).json({
-        status: false,
-        message: "Missing signed payload",
-      });
-    }
-
-    const result = await resolveStoreFromSignedPayload(signedPayload);
-
-    // Mark store as uninstalled (soft delete)
-    await Store.delete(result.storeHash);
-
-    console.log("✅ Store uninstalled:", result.storeHash);
-
-    res.status(200).json({
-      status: true,
-      message: "App uninstalled successfully",
-    });
-  } catch (error) {
-    console.error("❌ Uninstall Error:", error.message);
-    res.status(500).json({
-      status: false,
-      message: "Uninstall failed",
-      error: error.message,
-    });
-  }
-};
-
-// Load handler (when app is loaded in BigCommerce admin)
-const handleLoad = async (req, res) => {
-  try {
-    const signedPayload =
-      req.body.signed_payload_jwt || req.body.signed_payload;
-
-    if (!signedPayload) {
-      return res.status(400).json({
-        status: false,
-        message: "Missing signed payload",
-      });
-    }
-
-    const result = await resolveStoreFromSignedPayload(signedPayload);
-
-    // Fetch and sync channels on load (sync happens automatically in fetchChannelList)
-    const channelList = await fetchChannelList(
-      result.store.access_token,
-      result.storeHash,
-      result.store._id.toString(),
-    );
-
-    const response = buildLoginResponse(result, channelList);
-
-    res.json({
-      status: true,
-      data: response,
-    });
-  } catch (error) {
-    console.error("❌ Load Error:", error.message);
-    res.status(500).json({
-      status: false,
-      message: "Load failed",
-      error: error.message,
-    });
-  }
-};
-
 // Refresh session token endpoint
 const refreshToken = async (req, res, next) => {
   try {
     const { storeHash } = req.body;
 
     if (!storeHash) {
-      return res.status(400).json({
-        status: false,
-        message: "Missing store hash",
-      });
+      return res.status(400).json({status: false,message: "Missing store hash"});
     }
 
     // Find store by hash
     const store = await Store.findByHash(storeHash);
 
-    if (!store) {
-      return res.status(404).json({
-        status: false,
-        message: "Store not found",
-      });
-    }
-
-    // Verify store is active
-    if (!store.is_active) {
-      return res.status(403).json({
-        status: false,
-        message: "Store is not active",
-      });
+    if (!store || !store.is_active) {
+      return res.status(404).json({status: false, message: "Store not found or not active"});
     }
 
     // Generate new session token
@@ -422,7 +262,5 @@ const refreshToken = async (req, res, next) => {
 module.exports = {
   login,
   handleAuthCallback,
-  handleUninstall,
-  handleLoad,
   refreshToken,
 };

@@ -214,13 +214,9 @@ const fetchChannelList = async (
         // Seed email templates for newly synced channels
         if (databaseChannels && databaseChannels.length > 0) {
           try {
-            const {
-              seedEmailTemplatesForChannels,
-            } = require("./emailTemplateSeeder");
+            const {seedEmailTemplatesForChannels} = require("./emailTemplateSeeder");
             const channelIds = databaseChannels.map((ch) => ch._id);
-            console.log(
-              `🌱 Seeding email templates for ${channelIds.length} channels...`,
-            );
+            console.log(`🌱 Seeding email templates for ${channelIds.length} channels...`);
             await seedEmailTemplatesForChannels(channelIds);
           } catch (seedError) {
             console.error("❌ Error seeding email templates:", {
@@ -272,8 +268,8 @@ const fetchChannelList = async (
           waysToEarnCompleted: channel.waysToEarnCompleted || false,
           waysToRedeemCompleted: channel.waysToRedeemCompleted || false,
           customiseWidgetCompleted: channel.customiseWidgetCompleted || false,
-          widget_visibility:
-            typeof channel.widget_visibility === "boolean"
+            widget_visibility:
+              typeof channel.widget_visibility === "boolean"
               ? channel.widget_visibility
               : true,
           script_id: channel.script_id ?? null,

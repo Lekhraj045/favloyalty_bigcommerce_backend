@@ -9,7 +9,7 @@ const Channel = require("../models/Channel");
 const Plan = require("../models/Plan");
 const { getWebhooks, deleteWebhook } = require("../services/bigcommerceWebhookService");
 const { deleteScriptForChannel } = require("../services/bigcommerceScriptsService");
-const { sendEmail } = require("../services/emailService");
+const { sendUninstallNotificationEmail } = require("../helpers/emailHelpers");
 
 /**
  * Reset store settings to free plan defaults on uninstall.
@@ -384,26 +384,8 @@ const handleUninstall = async (req, res) => {
 
     console.log(`✅ App uninstalled completely for store: ${storeHash}`);
 
-    try {
-      const to = "support@favloyalty.com";
-      const from = process.env.EMAIL_FROM || "no-reply@favloyalty.com";
-      const subject = `BigCommerce uninstall: ${storeHash}`;
-      const html = `
-        <h2>BigCommerce app uninstalled</h2>
-        <p><b>Store hash:</b> ${storeHash}</p>
-        <p><b>Store name:</b> ${store?.store_name || "N/A"}</p>
-        <p><b>Store DB id:</b> ${store?._id?.toString?.() || "N/A"}</p>
-        <p><b>Store email (from DB):</b> ${store?.email || "N/A"}</p>
-        <p><b>Plan:</b> ${store?.plan || "N/A"}</p>
-        <p><b>Uninstall user email (from JWT payload):</b> ${
-          payload?.user?.email || payload?.owner?.email || "N/A"
-        }</p>
-        <p><b>Time:</b> ${new Date().toISOString()}</p>
-      `;
-      await sendEmail(to, from, subject, html, "FavLoyalty");
-    } catch (e) {
-      console.warn("⚠️ Failed to send uninstall notification email:", e.message);
-    }
+    // STEP 5: Send uninstall notification email
+    await sendUninstallNotificationEmail(store);
 
     res.status(200).send("App uninstalled successfully");
   } catch (error) {

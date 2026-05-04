@@ -253,20 +253,15 @@ const seedEmailTemplatesForChannel = async (channelId, force = false) => {
     console.log(`🌱 Seeding email templates for channel: ${channelObjectId}`);
 
     // Check if templates already exist for this channel
-    const existingTemplates =
-      await EmailTemplate.findByChannelId(channelObjectId);
+    const existingTemplates = await EmailTemplate.findByChannelId(channelObjectId);
 
     if (existingTemplates && existingTemplates.length > 0 && !force) {
-      console.log(
-        `ℹ️ Email templates already exist for channel ${channelObjectId}. Skipping seed.`,
-      );
+      console.log(`ℹ️ Email templates already exist for channel ${channelObjectId}. Skipping seed.`);
       return;
     }
 
     if (force && existingTemplates && existingTemplates.length > 0) {
-      console.log(
-        `🔄 Force seeding: Templates exist but will be updated for channel ${channelObjectId}`,
-      );
+      console.log(`🔄 Force seeding: Templates exist but will be updated for channel ${channelObjectId}`);
     }
 
     // Load default templates from JSON file
@@ -303,24 +298,17 @@ const seedEmailTemplatesForChannel = async (channelId, force = false) => {
           }
 
           jsonLoaded = true;
-          console.log(
-            `✅ Loaded ${defaultTemplates.length} templates from: ${jsonFilePath}`,
-          );
+          console.log(`✅ Loaded ${defaultTemplates.length} templates from: ${jsonFilePath}`);
           break;
         }
       } catch (error) {
-        console.warn(
-          `⚠️ Could not load JSON from ${jsonFilePath}:`,
-          error.message,
-        );
+        console.warn(`⚠️ Could not load JSON from ${jsonFilePath}:`, error.message);
         continue;
       }
     }
 
     if (!jsonLoaded) {
-      console.warn(
-        "⚠️ Could not load JSON file from any path, using hardcoded templates",
-      );
+      console.warn("⚠️ Could not load JSON file from any path, using hardcoded templates");
       defaultTemplates = getDefaultEmailTemplates();
     }
 
@@ -337,9 +325,7 @@ const seedEmailTemplatesForChannel = async (channelId, force = false) => {
 
         // Debug logging for imageUrl conversion
         if (!imageUrl || imageUrl === "") {
-          console.warn(
-            `⚠️ Empty imageUrl for template ${template.templateType}. Original: ${template.imageUrl}`,
-          );
+          console.warn(`⚠️ Empty imageUrl for template ${template.templateType}. Original: ${template.imageUrl}`);
         } else {
           console.log(`✅ Template ${template.templateType}: ${imageUrl}`);
         }
@@ -362,17 +348,11 @@ const seedEmailTemplatesForChannel = async (channelId, force = false) => {
 
         createdTemplates.push(created.templateType);
       } catch (error) {
-        console.error(
-          `❌ Error creating template ${template.templateType}:`,
-          error.message,
-        );
+        console.error(`❌ Error creating template ${template.templateType}:`, error.message);
       }
     }
 
-    console.log(
-      `✅ Successfully seeded ${createdTemplates.length} email templates for channel ${channelObjectId}:`,
-      createdTemplates.join(", "),
-    );
+    console.log(`✅ Successfully seeded ${createdTemplates.length} email templates for channel ${channelObjectId}:`, createdTemplates.join(", "));
   } catch (error) {
     console.error("❌ Error seeding email templates:", error.message);
     throw error;
@@ -393,10 +373,7 @@ const seedEmailTemplatesForChannels = async (channelIds) => {
     try {
       await seedEmailTemplatesForChannel(channelId);
     } catch (error) {
-      console.error(
-        `❌ Error seeding templates for channel ${channelId}:`,
-        error.message,
-      );
+      console.error(`❌ Error seeding templates for channel ${channelId}:`, error.message);
       // Continue with other channels even if one fails
     }
   }

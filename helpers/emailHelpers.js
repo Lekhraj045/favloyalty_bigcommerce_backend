@@ -1212,6 +1212,313 @@ async function sendRejoiningEmail(
   }
 }
 
+
+function escapeHtmlForEmail(value) {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function escapeHtmlAttribute(value) {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+async function sendInstallNotificationEmail(storeDetails) {
+  try {
+    const to = "support@favloyalty.com";
+    const from = process.env.EMAIL_FROM || "no-reply@favloyalty.com";
+    const storeHash = storeDetails?.storeHash || "N/A";
+    const subject = `New BigCommerce install: ${storeHash}`;
+
+    const storeName = escapeHtmlForEmail(storeDetails?.storeName) || "—";
+    const domain = escapeHtmlForEmail(storeDetails?.storeDomain) || "—";
+    const userEmail =
+      escapeHtmlForEmail(storeDetails?.userEmail || storeDetails?.email) ||
+      "—";
+    const scope = escapeHtmlForEmail(storeDetails?.scope) || "—";
+    const installedAt = new Date();
+    const installedAtIso = escapeHtmlForEmail(installedAt.toISOString());
+    const installedAtReadable = escapeHtmlForEmail(
+      installedAt.toLocaleString("en-US", {
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }),
+    );
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New install</title>
+</head>
+<body style="margin:0;padding:0;background-color:#EEF1F8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#EEF1F8;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;">
+          <tr>
+            <td style="padding:0 0 20px 0;text-align:center;">
+              <span style="display:inline-block;font-size:13px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#6B7280;">FavLoyalty</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-radius:16px 16px 0 0;overflow:hidden;background-color:#121E6C;background-image:linear-gradient(135deg,#121E6C 0%,#2D3B8C 45%,#4B5FD1 100%);padding:36px 32px;text-align:center;">
+              <p style="margin:0 0 8px 0;font-size:14px;font-weight:600;color:rgba(255,255,255,0.85);letter-spacing:0.04em;">BigCommerce</p>
+              <h1 style="margin:0;font-size:26px;line-height:1.25;font-weight:700;color:#FFFFFF;">New app installation</h1>
+              <p style="margin:14px 0 0 0;font-size:15px;line-height:1.5;color:rgba(255,255,255,0.88);">A merchant just connected FavLoyalty to their store.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#FFFFFF;padding:0 1px 1px 1px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#FFFFFF;border-radius:0 0 16px 16px;">
+                <tr>
+                  <td style="padding:28px 28px 8px 28px;">
+                    <p style="margin:0 0 4px 0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#9CA3AF;">Store</p>
+                    <p style="margin:0;font-size:22px;line-height:1.3;font-weight:700;color:#111827;">${storeName}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 28px 24px 28px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:separate;border-spacing:0;border-radius:12px;overflow:hidden;border:1px solid #E5E7EB;">
+                      <tr>
+                        <td style="padding:14px 16px;background-color:#F9FAFB;border-bottom:1px solid #E5E7EB;width:38%;font-size:13px;font-weight:600;color:#6B7280;">Store hash</td>
+                        <td style="padding:14px 16px;background-color:#FFFFFF;border-bottom:1px solid #E5E7EB;font-size:14px;font-weight:600;color:#111827;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">${escapeHtmlForEmail(storeHash)}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:14px 16px;background-color:#F9FAFB;border-bottom:1px solid #E5E7EB;font-size:13px;font-weight:600;color:#6B7280;">Domain</td>
+                        <td style="padding:14px 16px;background-color:#FFFFFF;border-bottom:1px solid #E5E7EB;font-size:14px;color:#374151;">${domain}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:14px 16px;background-color:#F9FAFB;border-bottom:1px solid #E5E7EB;font-size:13px;font-weight:600;color:#6B7280;">Merchant email</td>
+                        <td style="padding:14px 16px;background-color:#FFFFFF;border-bottom:1px solid #E5E7EB;font-size:14px;color:#374151;">${userEmail}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:14px 16px;background-color:#F9FAFB;vertical-align:top;font-size:13px;font-weight:600;color:#6B7280;">OAuth scope</td>
+                        <td style="padding:14px 16px;background-color:#FFFFFF;font-size:12px;line-height:1.55;color:#4B5563;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;word-break:break-word;">${scope}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 28px 28px 28px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F3F4F6;background-image:linear-gradient(90deg,#F3F4F6 0%,#EEF2FF 100%);border-radius:12px;">
+                      <tr>
+                        <td style="padding:16px 18px;">
+                          <p style="margin:0 0 4px 0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;">Installed at</p>
+                          <p style="margin:0;font-size:14px;font-weight:600;color:#111827;">${installedAtReadable}</p>
+                          <p style="margin:6px 0 0 0;font-size:12px;color:#9CA3AF;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">${installedAtIso}</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 8px 0 8px;text-align:center;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#9CA3AF;">Internal notification · FavLoyalty · BigCommerce</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    await sendEmail(to, from, subject, html, "FavLoyalty");
+  } catch (e) {
+    console.warn("⚠️ Failed to send install notification email:", e.message);
+  }
+}
+
+async function sendUninstallNotificationEmail(storeDetails) {
+  try {
+    const to = "support@favloyalty.com";
+    const from = process.env.EMAIL_FROM || "no-reply@favloyalty.com";
+
+    const storeHash =
+      storeDetails?.store_hash || storeDetails?.storeHash || "N/A";
+    const subject = `BigCommerce uninstall: ${storeHash}`;
+
+    const storeName =
+      escapeHtmlForEmail(storeDetails?.store_name || storeDetails?.storeName) ||
+      "—";
+    const domain =
+      escapeHtmlForEmail(
+        storeDetails?.store_domain || storeDetails?.storeDomain,
+      ) || "—";
+    const merchantEmail =
+      escapeHtmlForEmail(storeDetails?.email || storeDetails?.userEmail) || "—";
+    const planRaw = storeDetails?.plan || "—";
+    const plan = escapeHtmlForEmail(planRaw) || "—";
+    const scope = escapeHtmlForEmail(storeDetails?.scope) || "—";
+    const storeId =
+      storeDetails?._id != null
+        ? escapeHtmlForEmail(String(storeDetails._id))
+        : "—";
+
+    let installedAtReadable = "—";
+    let installedAtIso = "—";
+    const installedSrc =
+      storeDetails?.installed_at || storeDetails?.installedAt || null;
+    if (installedSrc) {
+      const installedAt =
+        installedSrc instanceof Date ? installedSrc : new Date(installedSrc);
+      if (!Number.isNaN(installedAt.getTime())) {
+        installedAtReadable = escapeHtmlForEmail(
+          installedAt.toLocaleString("en-US", {
+            weekday: "short",
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            timeZoneName: "short",
+          }),
+        );
+        installedAtIso = escapeHtmlForEmail(installedAt.toISOString());
+      }
+    }
+
+    const uninstalledAt = new Date();
+    const uninstalledAtIso = escapeHtmlForEmail(uninstalledAt.toISOString());
+    const uninstalledAtReadable = escapeHtmlForEmail(
+      uninstalledAt.toLocaleString("en-US", {
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }),
+    );
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App uninstalled</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F1F5F9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F1F5F9;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;">
+          <tr>
+            <td style="padding:0 0 20px 0;text-align:center;">
+              <span style="display:inline-block;font-size:13px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#64748B;">FavLoyalty</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-radius:16px 16px 0 0;overflow:hidden;background-color:#134E4A;background-image:linear-gradient(135deg,#134E4A 0%,#0F766E 42%,#14B8A6 100%);padding:36px 32px;text-align:center;">
+              <p style="margin:0 0 8px 0;font-size:14px;font-weight:600;color:rgba(255,255,255,0.9);letter-spacing:0.04em;">BigCommerce</p>
+              <h1 style="margin:0;font-size:26px;line-height:1.25;font-weight:700;color:#FFFFFF;">App uninstalled</h1>
+              <p style="margin:14px 0 0 0;font-size:15px;line-height:1.5;color:rgba(255,255,255,0.9);">FavLoyalty was removed from this store.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#FFFFFF;padding:0 1px 1px 1px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#FFFFFF;border-radius:0 0 16px 16px;">
+                <tr>
+                  <td style="padding:28px 28px 8px 28px;">
+                    <p style="margin:0 0 4px 0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#94A3B8;">Store</p>
+                    <p style="margin:0;font-size:22px;line-height:1.3;font-weight:700;color:#0F172A;">${storeName}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 28px 24px 28px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:separate;border-spacing:0;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">
+                      <tr>
+                        <td style="padding:14px 16px;background-color:#F8FAFC;border-bottom:1px solid #E2E8F0;width:38%;font-size:13px;font-weight:600;color:#64748B;">Store hash</td>
+                        <td style="padding:14px 16px;background-color:#FFFFFF;border-bottom:1px solid #E2E8F0;font-size:14px;font-weight:600;color:#0F172A;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">${escapeHtmlForEmail(storeHash)}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:14px 16px;background-color:#F8FAFC;border-bottom:1px solid #E2E8F0;font-size:13px;font-weight:600;color:#64748B;">Internal store ID</td>
+                        <td style="padding:14px 16px;background-color:#FFFFFF;border-bottom:1px solid #E2E8F0;font-size:13px;color:#334155;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;word-break:break-all;">${storeId}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:14px 16px;background-color:#F8FAFC;border-bottom:1px solid #E2E8F0;font-size:13px;font-weight:600;color:#64748B;">Domain</td>
+                        <td style="padding:14px 16px;background-color:#FFFFFF;border-bottom:1px solid #E2E8F0;font-size:14px;color:#334155;">${domain}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:14px 16px;background-color:#F8FAFC;border-bottom:1px solid #E2E8F0;font-size:13px;font-weight:600;color:#64748B;">Merchant email</td>
+                        <td style="padding:14px 16px;background-color:#FFFFFF;border-bottom:1px solid #E2E8F0;font-size:14px;color:#334155;">${merchantEmail}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:14px 16px;background-color:#F8FAFC;border-bottom:1px solid #E2E8F0;font-size:13px;font-weight:600;color:#64748B;">Plan at uninstall</td>
+                        <td style="padding:14px 16px;background-color:#FFFFFF;border-bottom:1px solid #E2E8F0;font-size:14px;color:#334155;text-transform:capitalize;">${plan}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:14px 16px;background-color:#F8FAFC;vertical-align:top;font-size:13px;font-weight:600;color:#64748B;">Last known scope</td>
+                        <td style="padding:14px 16px;background-color:#FFFFFF;font-size:12px;line-height:1.55;color:#475569;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;word-break:break-word;">${scope}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 28px 12px 28px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#ECFEFF;background-image:linear-gradient(90deg,#ECFEFF 0%,#F0FDFA 100%);border-radius:12px;border:1px solid #CCFBF1;">
+                      <tr>
+                        <td style="padding:16px 18px;">
+                          <p style="margin:0 0 4px 0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#0F766E;">Originally installed</p>
+                          <p style="margin:0;font-size:14px;font-weight:600;color:#0F172A;">${installedAtReadable}</p>
+                          <p style="margin:6px 0 0 0;font-size:12px;color:#94A3B8;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">${installedAtIso}</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 28px 28px 28px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#F1F5F9;background-image:linear-gradient(90deg,#F1F5F9 0%,#E2E8F0 100%);border-radius:12px;">
+                      <tr>
+                        <td style="padding:16px 18px;">
+                          <p style="margin:0 0 4px 0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#64748B;">Uninstalled at</p>
+                          <p style="margin:0;font-size:14px;font-weight:600;color:#0F172A;">${uninstalledAtReadable}</p>
+                          <p style="margin:6px 0 0 0;font-size:12px;color:#94A3B8;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">${uninstalledAtIso}</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 8px 0 8px;text-align:center;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#94A3B8;">Internal notification · FavLoyalty · BigCommerce uninstall</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    await sendEmail(to, from, subject, html, "FavLoyalty");
+  } catch (e) {
+    console.warn("⚠️ Failed to send uninstall notification email:", e.message);
+  }
+}
+
 module.exports = {
   getExpiryDate,
   sendBirthdayEmail,
@@ -1227,4 +1534,6 @@ module.exports = {
   sendReferralInvitationEmail,
   sendTierUpgradeEmail,
   sendRejoiningEmail,
+  sendInstallNotificationEmail,
+  sendUninstallNotificationEmail,
 };

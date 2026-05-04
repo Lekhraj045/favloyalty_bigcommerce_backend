@@ -50,6 +50,7 @@ function getAbsoluteImageUrl(imageUrl) {
  * @returns {string} - Relative path for database storage
  */
 function getRelativeImagePath(imageUrl) {
+  const backendUrl = process.env.BACKEND_URL || process.env.SERVER_URL_PATH;
   if (!imageUrl || imageUrl.trim() === "") {
     return "";
   }
@@ -62,8 +63,8 @@ function getRelativeImagePath(imageUrl) {
   // If it's an absolute URL, extract the path
   if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
     try {
-      const url = new URL(imageUrl);
-      return url.pathname; // Returns the path part (e.g., "/uploads/banner-images/image.jpg")
+      const url = imageUrl.split(backendUrl)[1];
+      return url; // Returns the path part (e.g., "/uploads/banner-images/image.jpg")
     } catch (error) {
       console.warn(`⚠️  Invalid URL format: ${imageUrl}`);
       return imageUrl;

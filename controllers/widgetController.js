@@ -1620,12 +1620,8 @@ const getMyReferrals = async (req, res, next) => {
  */
 const saveCustomerBirthday = async (req, res, next) => {
   try {
-    const {
-      storeHash,
-      channelId,
-      customerId: bcCustomerIdRaw,
-      dob: dobRaw,
-    } = req.body;
+    const {storeHash, channelId, customerId: bcCustomerIdRaw, dob: dobRaw} = req.body;
+
     if (!storeHash || channelId == null || channelId === "" || !dobRaw) {
       return res.status(400).json({
         success: false,
@@ -1647,8 +1643,7 @@ const saveCustomerBirthday = async (req, res, next) => {
     });
     if (!context) return;
 
-    const { store, channel } = context;
-    const bcCustomerId = context.bcCustomerId;
+    const { store, channel, bcCustomerId } = context;
     if (!bcCustomerId) {
       return res.status(400).json({
         success: false,
@@ -1660,7 +1655,8 @@ const saveCustomerBirthday = async (req, res, next) => {
       store_id: store._id,
       channel_id: channel.channel_id,
       bcCustomerId,
-    });
+    }).lean();
+
     if (!customer) {
       return res.status(404).json({
         success: false,
@@ -1692,12 +1688,9 @@ const saveCustomerBirthday = async (req, res, next) => {
       });
     }
 
-    const customerPlain =
-      typeof customer.toObject === "function"
-        ? customer.toObject()
-        : { ...customer };
+    // 3) Award birthday points if eligible
     const result = await awardBirthdayPointsIfEligible({
-      customer: { ...customerPlain, dob: dobDate },
+      customer: { ...customer, dob: dobDate },
       store,
       channel,
       collectSettings,

@@ -49,8 +49,7 @@ const savePoints = async (req, res, next) => {
 
     try {
       const { storeId, channelId, pointName, expiry, tierStatus } = req.body;
-      let { expiriesInDays, logo, customLogo, customPointName, tier } =
-        req.body;
+      let { expiriesInDays, logo, customLogo, customPointName, tier } = req.body;
 
       // Validate required fields
       if (!storeId || !channelId || !pointName) {
@@ -60,58 +59,31 @@ const savePoints = async (req, res, next) => {
         });
       }
 
-      // Convert string IDs to ObjectIds
-      const storeObjectId = new mongoose.Types.ObjectId(storeId);
-      const channelObjectId = new mongoose.Types.ObjectId(channelId);
-
+      const store = await Store.findById(storeId);
+      const channel = await Channel.findById(channelId);
       // Verify store and channel exist
-      const store = await Store.findById(storeObjectId);
-      if (!store) {
-        return res.status(404).json({
-          success: false,
-          message: "Store not found",
-        });
-      }
-
-      const channel = await Channel.findById(channelObjectId);
-      if (!channel) {
-        return res.status(404).json({
-          success: false,
-          message: "Channel not found",
-        });
-      }
+      if (!store) {return res.status(404).json({success: false, message: "Store not found"})}
+      if (!channel) {return res.status(404).json({success: false, message: "Channel not found"})}
 
       // Parse JSON strings if they exist
       if (typeof logo === "string") {
-        try {
-          logo = JSON.parse(logo);
-        } catch (e) {
-          logo = null;
-        }
+        try {logo = JSON.parse(logo)}
+        catch (e) {logo = null }
       }
 
       if (typeof customLogo === "string") {
-        try {
-          customLogo = JSON.parse(customLogo);
-        } catch (e) {
-          customLogo = null;
-        }
+        try {customLogo = JSON.parse(customLogo)}
+        catch (e) {customLogo = null }
       }
 
       if (typeof customPointName === "string") {
-        try {
-          customPointName = JSON.parse(customPointName);
-        } catch (e) {
-          customPointName = [];
-        }
+        try {customPointName = JSON.parse(customPointName)}
+        catch (e) {customPointName = []}
       }
 
       if (typeof tier === "string") {
-        try {
-          tier = JSON.parse(tier);
-        } catch (e) {
-          tier = [];
-        }
+        try {tier = JSON.parse(tier)}
+        catch (e) {tier = []}
       }
 
       // Handle uploaded logo file
@@ -132,8 +104,8 @@ const savePoints = async (req, res, next) => {
 
       // Prepare point data
       const pointData = {
-        store_id: storeObjectId,
-        channel_id: channelObjectId,
+        store_id: store._id,
+        channel_id: channel._id,
         pointName: pointName,
         expiry: expiry === "true" || expiry === true,
         tierStatus: tierStatus === "true" || tierStatus === true,
@@ -162,18 +134,15 @@ const savePoints = async (req, res, next) => {
       }
 
       if (
-        pointData.tierStatus &&
-        tier &&
-        Array.isArray(tier) &&
-        tier.length > 0
+        pointData.tierStatus && tier && Array.isArray(tier) && tier.length > 0
       ) {
         pointData.tier = tier;
       }
 
       // Check if points already exist for this store and channel
       const existingPoint = await Point.findOne({
-        store_id: storeObjectId,
-        channel_id: channelObjectId,
+        store_id: store._id,
+        channel_id: channel._id,
       });
 
       let savedPoint;

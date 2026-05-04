@@ -61,10 +61,12 @@ async function initializeAgenda() {
       throw new Error("MongoDB database object is not available");
     }
 
+    const connectionString = process.env.MONGODB_URI;
+
     // Create Agenda instance using the MongoDB Db object
     agenda = new Agenda({
-      mongo: nativeDb,
       db: {
+        address: connectionString,
         collection: "eventAgendaJobs",
       },
       processEvery: "1 minute",

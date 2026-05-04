@@ -86,10 +86,7 @@ storeSchema.index({ plan: 1 });
 storeSchema.statics.create = async function (storeData) {
   const { storeHash, accessToken, scope, user, email, storeName, storeDomain, storeUrl } = storeData;
 
-  console.log("🔄 Attempting to create/update store:", {
-    storeHash,
-    email: email || user?.email,
-  });
+  console.log("🔄 Attempting to create/update store:", {storeHash, email: email || user?.email,});
 
   try {
     // Find existing store
