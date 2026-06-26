@@ -38,7 +38,8 @@ const getChannels = async (req, res, next) => {
     const formattedChannels = channels
       .filter(
         (channel) =>
-          channel.status === "active" && channel.platform === "bigcommerce",
+          (channel.status === "active" || channel.status === "prelaunch" || channel.status === "connected")
+          && channel.platform === "bigcommerce",
       )
       .map((channel) => ({
         id: channel._id.toString(),

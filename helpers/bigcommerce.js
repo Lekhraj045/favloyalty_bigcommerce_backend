@@ -124,7 +124,8 @@ const fetchChannelList = async (
       const allChannelsCount = channelsFromBigCommerce.length;
       channelsFromBigCommerce = channelsFromBigCommerce.filter(
         (channel) =>
-          channel.status === "active" && channel.platform === "bigcommerce",
+          (channel.status === "active" || channel.status === "prelaunch" || channel.status === "connected")
+          && channel.platform === "bigcommerce"
       );
       console.log(
         `🔍 Filtered channels: ${allChannelsCount} total, ${channelsFromBigCommerce.length} active bigcommerce-platform`,
@@ -183,7 +184,8 @@ const fetchChannelList = async (
         ) {
           const excludedChannels = databaseChannels.filter(
             (channel) =>
-              channel.status !== "active" || channel.platform !== "bigcommerce",
+              !(channel.status === "active" || channel.status === "prelaunch" || channel.status === "connected")
+               || channel.platform !== "bigcommerce"
           );
 
           if (excludedChannels.length > 0) {
@@ -254,7 +256,8 @@ const fetchChannelList = async (
       const formattedChannels = databaseChannels
         .filter(
           (channel) =>
-            channel.status === "active" && channel.platform === "bigcommerce",
+            (channel.status === "active" || channel.status === "prelaunch" || channel.status === "connected")
+            && channel.platform === "bigcommerce",
         )
         .map((channel) => ({
           id: channel._id.toString(),
@@ -289,7 +292,8 @@ const fetchChannelList = async (
     const formattedChannels = channelsFromBigCommerce
       .filter(
         (channel) =>
-          channel.status === "active" && channel.platform === "bigcommerce",
+          (channel.status === "active" || channel.status === "prelaunch" || channel.status === "connected")
+          && channel.platform === "bigcommerce",
       )
       .map((channel) => ({
         id: null, // No database ID available
